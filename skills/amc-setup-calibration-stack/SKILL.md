@@ -2,7 +2,7 @@
 name: "amc-setup-calibration-stack"
 description: "Launch AutoMagicCalib microservice and web UI from NGC release images via Docker Compose. Use when user says 'deploy auto calibration', 'launch auto calibration', 'launch AMC', 'start MS+UI', or 'set up auto-magic-calib'. Requires NGC API key."
 metadata:
-  author: "NVIDIA CORPORATION"
+  author: "Shubham Agrawal <shuagrawal@nvidia.com>"
   tags: [amc, deepstream, docker, calibration, setup, ngc]
 owner: "NVIDIA CORPORATION"
 service: "auto-magic-calib"
@@ -74,7 +74,7 @@ done
 if [ -z "$REPO_ROOT" ]; then
   if [ -n "$CURRENT_GIT_ROOT" ] && [ -d "$CURRENT_GIT_ROOT/tools/auto-magic-calib" ]; then
     echo "Found $CURRENT_GIT_ROOT/tools/auto-magic-calib, but it is not an initialized AMC checkout."
-    echo "If running from the DeepStream repository root:"
+    echo "If this is the DeepStream mono-repo, run from its root:"
     echo "  git submodule update --init tools/auto-magic-calib"
   fi
 

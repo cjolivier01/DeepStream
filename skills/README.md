@@ -38,10 +38,10 @@ Skills that mention older DeepStream base images may still work out of the box w
 
 ## Project Structure
 
-This README sits under `skills/` inside the DeepStream repository. Layout of this subtree, plus the related top-level `example_prompts/` directory:
+This README sits under `skills/` inside the DeepStream mono-repo. Layout of this subtree, plus the related top-level `example_prompts/` directory:
 
 ```
-deepstream/                                 # repository root
+deepstream/                                 # mono-repo root
 ├── skills/                                 # Agentic skills for guided DeepStream development
 │   ├── README.md                           # This file
 │   ├── deepstream-dev/                     # DeepStream development skill with condensed references
@@ -53,7 +53,10 @@ deepstream/                                 # repository root
 │   ├── amc-setup-calibration-stack/        # AutoMagicCalib MS + UI launch skill
 │   ├── amc-run-sample-calibration/         # AutoMagicCalib bundled-sample validation skill
 │   ├── amc-run-video-calibration/          # AutoMagicCalib user-video calibration skill
-│   └── amc-run-rtsp-calibration/           # AutoMagicCalib RTSP-stream calibration skill
+│   ├── amc-run-rtsp-calibration/           # AutoMagicCalib RTSP-stream calibration skill
+│   ├── rtvi-cv-customize-model/            # Swap CV detection model in RTVI-CV (VSS Alerts Blueprint)
+│   ├── rtvi-vlm-customize-model/           # Swap VLM in the VSS Alerts Blueprint
+│   └── rtvi-cv-scaffold-vss-service/       # Scaffold a custom RTVI CV microservice for VSS
 └── example_prompts/                        # Pre-built prompts for code generation
 ```
 
@@ -74,7 +77,7 @@ An **agentic skill** is a structured knowledge package that an AI coding assista
 
 Each subdirectory under `skills/` contains a DeepStream agentic skill that follows the standard `SKILL.md` convention supported by AI coding assistants such as Cursor, Claude Code, and others.
 
-This project ships **nine complementary skills**:
+This project ships **fourteen complementary skills**:
 
 | Skill | Mode | Use when you want to… |
 |-------|------|----------------------|
@@ -88,6 +91,9 @@ This project ships **nine complementary skills**:
 | [`amc-run-sample-calibration`](amc-run-sample-calibration/) | Validation runbook + script | Verify a running AMC stack with the bundled synthetic sample dataset. |
 | [`amc-run-video-calibration`](amc-run-video-calibration/) | Calibration runbook + script | Calibrate a camera rig from user-provided pre-recorded MP4 files via the AMC REST API. |
 | [`amc-run-rtsp-calibration`](amc-run-rtsp-calibration/) | RTSP capture + calibration runbook | Calibrate a camera rig from live RTSP streams through VIOS capture and the AMC REST API. |
+| [`rtvi-cv-customize-model`](rtvi-cv-customize-model/) | Model swap + redeployment | Swap the CV detection model in RTVI-CV (VSS Alerts Blueprint verification mode) — covers ONNX staging, custom bbox parser, nvinfer config, runtime TRT engine build, and redeployment. |
+| [`rtvi-vlm-customize-model`](rtvi-vlm-customize-model/) | VLM endpoint / deployment swap | Swap the VLM in the VSS Alerts Blueprint across all three consumers (`rtvi-vlm`, `vlm-as-verifier`, `vss-agent`) via OpenAI-compatible endpoint or in-container vLLM. |
+| [`rtvi-cv-scaffold-vss-service`](rtvi-cv-scaffold-vss-service/) | Microservice scaffold | Scaffold a custom RTVI CV microservice (YOLO26 reference) that publishes detection metadata to VSS via Kafka `mdx-raw`. |
 
 Skip ahead to [Skill: deepstream-import-vision-model](#skill-deepstream-import-vision-model) for the model-onboarding workflow, or [Skill: deepstream-run-mv3dt](#skill-deepstream-run-mv3dt) for the MV3DT reference-app workflow.
 
@@ -546,6 +552,84 @@ calibrate these streams - rtsp://<host>:<port>/<path>/cam_00.mp4, rtsp://<host>:
 
 ---
 
+### Skill: rtvi-cv-customize-model
+
+`rtvi-cv-customize-model` covers swapping the DeepStream CV detection model in the VSS Alerts Blueprint verification (`2d_cv`) mode. It walks through ONNX staging, custom bbox parser build and symbol alignment, nvinfer config, runtime TRT engine build via `trtexec`, and redeployment of `perception-alerts`. YOLO11 is the reference example; the same steps apply to any ONNX-format detector.
+
+#### Installing the skill
+
+```bash
+# Claude Code user-level
+cp -r skills/rtvi-cv-customize-model ~/.claude/skills/
+
+# Codex user-level
+cp -r skills/rtvi-cv-customize-model ~/.codex/skills/
+```
+
+#### Example prompts
+
+```text
+Replace the VSS Alerts Blueprint verification-mode detector with a custom ONNX model and redeploy perception-alerts.
+```
+
+```text
+How do I use a different detection model with the VSS Alerts Blueprint?
+```
+
+---
+
+### Skill: rtvi-vlm-customize-model
+
+`rtvi-vlm-customize-model` covers swapping the VLM in the VSS Alerts Blueprint. It handles all three VLM consumers (`rtvi-vlm`, `vlm-as-verifier`, `vss-agent`), both deployment methods (OpenAI-compatible endpoint and in-container vLLM), and health checks.
+
+#### Installing the skill
+
+```bash
+# Claude Code user-level
+cp -r skills/rtvi-vlm-customize-model ~/.claude/skills/
+
+# Codex user-level
+cp -r skills/rtvi-vlm-customize-model ~/.codex/skills/
+```
+
+#### Example prompts
+
+```text
+Point the VSS Alerts Blueprint at a host-side NIM on http://host.docker.internal:30082 for all RTVI-VLM calls.
+```
+
+```text
+Run rtvi-vlm standalone with Qwen3-VL-8B-Instruct served inside the container.
+```
+
+---
+
+### Skill: rtvi-cv-scaffold-vss-service
+
+`rtvi-cv-scaffold-vss-service` scaffolds a deployable custom RTVI CV microservice that plugs into VSS Search and Alerts profiles via Kafka `mdx-raw`. The shipped scaffold is a YOLO26 reference implementation and generates a runnable repo with a Dockerfile, DeepStream pipeline configs, compose definition, Python adapter, tests, and a smoke-test consumer.
+
+#### Installing the skill
+
+```bash
+# Claude Code user-level
+cp -r skills/rtvi-cv-scaffold-vss-service ~/.claude/skills/
+
+# Codex user-level
+cp -r skills/rtvi-cv-scaffold-vss-service ~/.codex/skills/
+```
+
+#### Example prompts
+
+```text
+Create a custom RTVI CV microservice that runs YOLO26 in DeepStream and publishes object metadata so VSS Search and Alerts can consume it.
+```
+
+```text
+Scaffold a custom perception microservice for VSS Alerts using my YOLO26 ONNX and wire it into mdx-raw.
+```
+
+---
+
 ## Using Example Prompts
 
 The `example_prompts/` directory contains pre-built prompts for generating DeepStream applications. Each prompt file provides a complete specification that an AI agent can follow to produce working code.
@@ -669,4 +753,3 @@ Create the FastAPI server with all endpoints shown in @rtvi_vlm_openapi_spec.png
     <img src="https://img.youtube.com/vi/ZQTX7MeN7mI/maxresdefault.jpg" alt="Build Vision AI Pipelines with DeepStream Coding Agents" width="560" style="border-radius:8px">
   </picture>
 </a>
-

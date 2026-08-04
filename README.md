@@ -37,6 +37,11 @@ This repository contains the complete source code for DeepStream 9.1.
 - [`amc-run-sample-calibration`](skills/amc-run-sample-calibration/SKILL.md) — verify AMC with the bundled sample dataset
 - [`amc-run-video-calibration`](skills/amc-run-video-calibration/SKILL.md) — calibrate user-provided MP4 camera videos
 - [`amc-run-rtsp-calibration`](skills/amc-run-rtsp-calibration/SKILL.md) — calibrate live RTSP camera streams through VIOS capture
+- [`rtvi-cv-customize-model`](skills/rtvi-cv-customize-model/SKILL.md) — swap the CV detection model in RTVI-CV
+- [`rtvi-vlm-customize-model`](skills/rtvi-vlm-customize-model/SKILL.md) — swap the VLM in the VSS Alerts Blueprint
+- [`rtvi-cv-scaffold-vss-service`](skills/rtvi-cv-scaffold-vss-service/SKILL.md) — scaffold a custom RTVI CV microservice that publishes to VSS via Kafka
+
+The Brev launchable workflow is available in [`deploy/brev/`](deploy/brev/README.md).
 
 # Requirements
 
@@ -145,6 +150,7 @@ DeepStream/
 │   ├── BUILD.md                             # build instructions
 │   └── build.sh                             # top-level build driver
 ├── example_prompts/                         # example prompts for AI coding agents
+├── deploy/brev/                              # Brev launchable workflow for DeepStream Code Agent
 ├── includes/                                # shared public headers (ds3d, nvdsinferserver, …)
 ├── scripts/
 │   ├── install_artifacts.sh                 # installs proprietary libs + sample data to /opt
@@ -168,6 +174,9 @@ DeepStream/
 │   ├── deepstream-sop/                      # SOP step-sequence compliance microservice
 │   ├── deepstream-import-vision-model/      # autonomous vision-model onboarding skill
 │   └── deepstream-run-mv3dt/                # MV3DT reference-app operations skill
+│   ├── rtvi-cv-customize-model/              # RTVI-CV model customization skill
+│   ├── rtvi-vlm-customize-model/             # RTVI VLM model customization skill
+│   └── rtvi-cv-scaffold-vss-service/         # RTVI CV VSS-service scaffolding skill
 ├── src/
 │   ├── apps/                                # sample, reference, and TAO sample applications
 │   ├── gst-plugins/                         # GStreamer plugin sources (per-plugin subdirs)
@@ -301,4 +310,3 @@ All GitHub Release assets (`.deb` packages and `.tar.gz` tarballs under the `dee
 ## Third‑Party License/Notice
 
 Refer [THIRD_PARTY_LICENSES](./THIRD_PARTY_LICENSES.txt) for all 3rd Party OSS licenses and Notices
-

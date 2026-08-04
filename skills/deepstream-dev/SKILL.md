@@ -2,6 +2,8 @@
 name: deepstream-dev
 description: NVIDIA DeepStream SDK development with Python pyservicemaker API. Use when building video analytics pipelines, GStreamer-based video processing, TensorRT inference integration, object detection/tracking, or Kafka/message broker integration.
 owner: NVIDIA CORPORATION
+metadata:
+  author: "NVIDIA CORPORATION <info@nvidia.com>"
 service: deepstream
 version: 1.1.1
 reviewed: 2026-04-24
@@ -9,6 +11,8 @@ license: CC-BY-4.0 AND Apache-2.0
 ---
 
 # DeepStream Development Skill
+
+This skill requires access to all of the reference documents listed in the `references/` directory below. Ensure they are available before executing the workflow.
 
 When this skill is active, **ALWAYS read the relevant reference documents** before generating code. Do NOT rely on memory - the reference documents contain critical details about exact property names, correct API usage, and common pitfalls.
 
@@ -24,7 +28,7 @@ When this skill is active, **ALWAYS read the relevant reference documents** befo
 
 ### Typical Pipeline Flow
 
-```
+```text
 Source → Stream Muxer → Inference → [Tracker] → OSD → Renderer
 ```
 Components in `[brackets]` are **optional** -- only add them when the user explicitly requests them.
@@ -121,7 +125,7 @@ DeepStream uses NVIDIA Video Memory Manager (NVMM) for zero-copy GPU buffer tran
    **Symptom of mismatch**: If `cluster-mode: 2` is used with a post-NMS `[N, 6]` output, bounding boxes appear shifted by 45° or 135° from the actual objects (DeepStream's NMS incorrectly re-processes already-final coordinates).
    If you see tilted or rotated boxes, also check the OBB / `rotation_angle` note in `references/nvinfer_config.md`: for non-OBB models, value-initialize `NvDsInferObjectDetectionInfo` with `obj{}` and keep `rotation_angle = 0`; plain `NvDsInferObjectDetectionInfo obj;` leaves fields uninitialized.
 
-14. **Virtual Environment Must Include pyservicemaker**: `pyservicemaker` is installed system-wide but is NOT accessible from a standard Python virtual environment. When a task requires a venv (e.g., for model download/conversion pip dependencies), **always install `pyservicemaker` and `pyyaml` inside the venv**. The venv setup in generated code and README must always include:
+14. **Virtual Environment Must Include pyservicemaker**: `pyservicemaker` is installed system-wide but is NOT accessible from a standard Python virtual environment. When a task requires a venv (e.g., for model download/conversion pip dependencies), **always install `pyservicemaker` and `pyyaml` inside the venv**; do not rewrite pyservicemaker pipeline code into non-pyservicemaker code to work around a missing import. The venv setup in generated code and README must always include:
     ```bash
     python3 -m venv venv
     source venv/bin/activate

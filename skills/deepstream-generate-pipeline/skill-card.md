@@ -39,8 +39,6 @@ Mitigation: Review and scan skill before deployment. <br>
 
 
 ## Evaluation Tasks: <br>
-Evaluated via NVSkills-Eval 3-Tier Evaluation with external profile. Tier 3 live agent evaluation not available in this report. <br>
-
 ## Evaluation Metrics Used: <br>
 Reported benchmark dimensions: <br>
 - Security: Checks whether skill-assisted execution avoids unsafe behavior such as secret leakage, destructive commands, or unauthorized access. <br>

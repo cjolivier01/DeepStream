@@ -6,7 +6,7 @@ Load this reference when the user asks to install, prepare, or validate MV3DT De
 
 The repo script is the source of truth. It checks the OS, NVIDIA driver, Docker GPU runtime, pulls the DeepStream container, extracts `assets/datasets.zip`, downloads models, builds custom parsers, installs or starts Mosquitto and Kafka, creates the Kafka topic `mv3dt`, and creates `mv3dt_venv`.
 
-Default setup is DeepStream Container only. Do not enable Inference Builder from this skill; if the user asks for it, point them to `docs/step-by-step-inference-builder.md`.
+Default setup is DeepStream Container only.
 
 Before full setup or a first run, summarize that setup may install packages, pull containers, download models, start Mosquitto/Kafka, and write generated files under the repo and `${BASE_DIR:-$HOME}`. Ask before using `sudo`, including the `DOCKER_CMD="sudo docker"` fallback.
 

@@ -7,7 +7,7 @@ version: "1.0.0"
 reviewed: "2026-06-15"
 license: "Apache-2.0"
 metadata:
-  author: "NVIDIA CORPORATION"
+  author: "Shubham Agrawal <shuagrawal@nvidia.com>"
   tags: [amc, calibration, rtsp, vios, rest-api, camera, python]
 ---
 

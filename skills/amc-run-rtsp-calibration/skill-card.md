@@ -40,9 +40,6 @@ Mitigation: Review and scan skill before deployment. <br>
 
 
 
-## Evaluation Tasks: <br>
-6 evaluation tasks (5 positive skill-activation, 1 negative) from NVSkills-Eval internal profile in astra-sandbox environment. <br>
-
 ## Evaluation Metrics Used: <br>
 Reported benchmark dimensions: <br>
 - Security: Checks whether skill-assisted execution avoids unsafe behavior such as secret leakage, destructive commands, or unauthorized access. <br>
