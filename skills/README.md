@@ -77,7 +77,7 @@ An **agentic skill** is a structured knowledge package that an AI coding assista
 
 Each subdirectory under `skills/` contains a DeepStream agentic skill that follows the standard `SKILL.md` convention supported by AI coding assistants such as Cursor, Claude Code, and others.
 
-This project ships **fourteen complementary skills**:
+This project ships **thirteen complementary skills**:
 
 | Skill | Mode | Use when you want to… |
 |-------|------|----------------------|

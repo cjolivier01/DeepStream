@@ -40,6 +40,8 @@ Mitigation: Review and scan skill before deployment. <br>
 
 
 ## Evaluation Tasks: <br>
+Evaluated against 4 evaluation tasks in a validation environment using the NVSkills-Eval release-validation profile with 1 attempt per task and a 50% pass threshold. <br>
+
 ## Evaluation Metrics Used: <br>
 Reported benchmark dimensions: <br>
 - Security: Checks whether skill-assisted execution avoids unsafe behavior such as secret leakage, destructive commands, or unauthorized access. <br>
