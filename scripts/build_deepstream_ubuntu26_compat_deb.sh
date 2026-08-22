@@ -32,13 +32,13 @@ Options:
   --install-root DIR     Existing DeepStream install root
                          default: /opt/nvidia/deepstream/deepstream-9.1
   --version VERSION      Debian package version
-                         default: 9.1.0-1
+                         default: 9.1.0-1+resolute2
   --force                Build even when the host is not Ubuntu 26.04/resolute
   -h, --help             Show this help
 
 Environment overrides:
   NVDS_VERSION=9.1       DeepStream major.minor version
-  DEB_VERSION=9.1.0-1    Debian package version
+  DEB_VERSION=9.1.0-1+resolute2
   OUT_DIR=...            Same as --output-dir
   INSTALL_ROOT=...       Same as --install-root
 EOF
@@ -46,7 +46,7 @@ EOF
 
 NVDS_VERSION=${NVDS_VERSION:-9.1}
 PKG_NAME="deepstream-${NVDS_VERSION}"
-DEB_VERSION=${DEB_VERSION:-${NVDS_VERSION}.0-1}
+DEB_VERSION=${DEB_VERSION:-${NVDS_VERSION}.0-1+resolute2}
 INSTALL_ROOT=${INSTALL_ROOT:-/opt/nvidia/deepstream/deepstream-${NVDS_VERSION}}
 OUT_DIR=${OUT_DIR:-artifacts/local-debs}
 FORCE=0
