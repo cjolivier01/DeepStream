@@ -72,6 +72,7 @@ For build and installation instructions, see [build/BUILD.md](../../build/BUILD.
 
 | Plugin | Element Name | Description |
 |---|---|---|
+| `gst-dsxvideoconvert` | `dsxvideoconvert` | Source-available DeepStream RAW/NVMM colorspace converter, scaler, cropper, and orientation transform. See [README](gst-dsxvideoconvert/README.md). |
 | `gst-nvimage` | `nvimgdec` / `nvimgenc` | GPU-accelerated image encode and decode. See [README](gst-nvimage/README). |
 | `gst-nvreplay` | `nvreplay` | Seek and replay support for recorded streams. See [README](gst-nvreplay/README). |
 
