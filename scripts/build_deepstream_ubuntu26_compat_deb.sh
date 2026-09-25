@@ -32,21 +32,30 @@ Options:
   --install-root DIR     Existing DeepStream install root
                          default: /opt/nvidia/deepstream/deepstream-9.1
   --version VERSION      Debian package version
-                         default: 9.1.0-1+resolute2
+                         default: 9.1.0.2-1+resolute1
   --force                Build even when the host is not Ubuntu 26.04/resolute
   -h, --help             Show this help
 
 Environment overrides:
-  NVDS_VERSION=9.1       DeepStream major.minor version
-  DEB_VERSION=9.1.0-1+resolute2
+  NVDS_VERSION=9.1       DeepStream major.minor version; sets the package name
+                         (deepstream-9.1) and the install root. Do not add point
+                         release digits here — dependents resolve major.minor.
+  DS_POINT_VERSION=9.1.0.2
+                         Upstream version of this repo's point release
+  DEB_REVISION=1+resolute1
+                         Debian revision, with local Ubuntu 26.04 suffix
+  DEB_VERSION=9.1.0.2-1+resolute1
+                         Full version; overrides DS_POINT_VERSION/DEB_REVISION
   OUT_DIR=...            Same as --output-dir
   INSTALL_ROOT=...       Same as --install-root
 EOF
 }
 
 NVDS_VERSION=${NVDS_VERSION:-9.1}
+DS_POINT_VERSION=${DS_POINT_VERSION:-9.1.0.2}
+DEB_REVISION=${DEB_REVISION:-1+resolute1}
 PKG_NAME="deepstream-${NVDS_VERSION}"
-DEB_VERSION=${DEB_VERSION:-${NVDS_VERSION}.0-1+resolute2}
+DEB_VERSION=${DEB_VERSION:-${DS_POINT_VERSION}-${DEB_REVISION}}
 INSTALL_ROOT=${INSTALL_ROOT:-/opt/nvidia/deepstream/deepstream-${NVDS_VERSION}}
 OUT_DIR=${OUT_DIR:-artifacts/local-debs}
 FORCE=0
@@ -173,9 +182,9 @@ Depends: cuda-cudart-13-0 | cuda-cudart-13-2,
  mesa-libgallium | libglapi-mesa,
  libgles2-mesa-dev,
  python3
-Description: DeepStream SDK 9.1 local compatibility package for Ubuntu 26.04
- This package records that DeepStream 9.1 is installed on Ubuntu 26.04 systems
- where NVIDIA's Ubuntu 24.04 all-in-one deepstream-9.1 deb cannot satisfy its
+Description: DeepStream SDK $DS_POINT_VERSION local compatibility package for Ubuntu 26.04
+ This package records that DeepStream $DS_POINT_VERSION is installed on Ubuntu 26.04
+ systems where NVIDIA's Ubuntu 24.04 all-in-one $PKG_NAME deb cannot satisfy its
  versioned libglapi-mesa dependency.
  .
  It does not ship the full NVIDIA DeepStream payload. The runtime tree must
@@ -223,12 +232,13 @@ chmod 0755 "$PKG_DIR/DEBIAN/postinst" "$PKG_DIR/DEBIAN/prerm"
 cat >"$PKG_DIR/usr/share/doc/$PKG_NAME/README.ubuntu26-compat" <<EOF
 $PKG_NAME $DEB_VERSION Ubuntu 26.04 compatibility package
 
-This package is a local metadata package for systems where DeepStream 9.1 was
-installed from the DeepStream source repository build scripts into:
+This package is a local metadata package for systems where DeepStream
+$DS_POINT_VERSION was installed from the DeepStream source repository build
+scripts into:
 
   $INSTALL_ROOT
 
-It exists to satisfy packages that depend on "deepstream-9.1" while avoiding
+It exists to satisfy packages that depend on "$PKG_NAME" while avoiding
 the Ubuntu 24.04-specific libglapi-mesa dependency in NVIDIA's all-in-one deb.
 
 It does not contain the full NVIDIA DeepStream payload. Do not redistribute it
