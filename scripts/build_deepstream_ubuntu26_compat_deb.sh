@@ -20,7 +20,7 @@ usage() {
   cat <<'EOF'
 Usage: scripts/build_deepstream_ubuntu26_compat_deb.sh [OPTIONS]
 
-Build a local Ubuntu 26.04-compatible Debian package named deepstream-9.1.
+Build a local Ubuntu 26.04-compatible Debian package named deepstream-9.2.
 
 This is a compatibility registration package. It does not copy the full NVIDIA
 DeepStream payload into the deb. It expects DeepStream to have already been
@@ -30,30 +30,40 @@ Options:
   --output-dir DIR       Directory for the generated deb
                          default: artifacts/local-debs
   --install-root DIR     Existing DeepStream install root
-                         default: /opt/nvidia/deepstream/deepstream-9.1
+                         default: /opt/nvidia/deepstream/deepstream-9.2
   --version VERSION      Debian package version
-                         default: 9.1.0.2-1+resolute1
+                         default: 9.2.0-1+resolute1
   --force                Build even when the host is not Ubuntu 26.04/resolute
   -h, --help             Show this help
 
 Environment overrides:
-  NVDS_VERSION=9.1       DeepStream major.minor version; sets the package name
-                         (deepstream-9.1) and the install root. Do not add point
-                         release digits here — dependents resolve major.minor.
-  DS_POINT_VERSION=9.1.0.2
+  NVDS_VERSION=9.2.0     DeepStream version; MAJOR.MINOR.PATCH is accepted and
+                         truncated to MAJOR.MINOR (as build/build.sh does) for the
+                         package name (deepstream-9.2) and the install root, since
+                         dependents resolve major.minor.
+  DS_POINT_VERSION=9.2.0
                          Upstream version of this repo's point release
   DEB_REVISION=1+resolute1
                          Debian revision, with local Ubuntu 26.04 suffix
-  DEB_VERSION=9.1.0.2-1+resolute1
+  DEB_VERSION=9.2.0-1+resolute1
                          Full version; overrides DS_POINT_VERSION/DEB_REVISION
   OUT_DIR=...            Same as --output-dir
   INSTALL_ROOT=...       Same as --install-root
 EOF
 }
 
-NVDS_VERSION=${NVDS_VERSION:-9.1}
-DS_POINT_VERSION=${DS_POINT_VERSION:-9.1.0.2}
+NVDS_VERSION=${NVDS_VERSION:-9.2.0}
+DS_POINT_VERSION=${DS_POINT_VERSION:-9.2.0}
 DEB_REVISION=${DEB_REVISION:-1+resolute1}
+
+# build/build.sh takes NVDS_VERSION as MAJOR.MINOR.PATCH and installs into a
+# MAJOR.MINOR tree; accept either form here so the same value works for both.
+if [[ ! "$NVDS_VERSION" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
+  echo "error: invalid NVDS_VERSION='$NVDS_VERSION' (expected MAJOR.MINOR or MAJOR.MINOR.PATCH, e.g. 9.2.0)" >&2
+  exit 2
+fi
+NVDS_VERSION=$(echo "$NVDS_VERSION" | cut -d. -f1,2)
+
 PKG_NAME="deepstream-${NVDS_VERSION}"
 DEB_VERSION=${DEB_VERSION:-${DS_POINT_VERSION}-${DEB_REVISION}}
 INSTALL_ROOT=${INSTALL_ROOT:-/opt/nvidia/deepstream/deepstream-${NVDS_VERSION}}
@@ -159,10 +169,10 @@ Maintainer: Local DeepStream Compatibility <root@localhost>
 Source: deepstream-ubuntu26-compat
 Section: metapackages
 Priority: optional
-Depends: cuda-cudart-13-0 | cuda-cudart-13-2,
- cuda-cudart-dev-13-0 | cuda-cudart-dev-13-2,
- libnpp-13-0 | libnpp-13-2,
- libnpp-dev-13-0 | libnpp-dev-13-2,
+Depends: cuda-cudart-13-2 | cuda-cudart-13-0,
+ cuda-cudart-dev-13-2 | cuda-cudart-dev-13-0,
+ libnpp-13-2 | libnpp-13-0,
+ libnpp-dev-13-2 | libnpp-dev-13-0,
  libcairo2,
  libglib2.0-0,
  libgstreamer1.0-0,
