@@ -256,9 +256,21 @@ else
   sed -i 's/\(option(use_edge_modules.*\)OFF)/\1ON)/' "$AZURE_DIR/CMakeLists.txt"
 
   mkdir -p "$AZURE_DIR/cmake"
+  # Pin C17. crt_abstractions.h accepts only an exact __STDC_VERSION__ list (C99,
+  # C11, C18); GCC 15 defaults to -std=gnu23 (202311L), which matches none, so the
+  # header typedefs _Bool/bool -- keywords in C23 -- and then trips its own
+  # "#error update this file to contain the latest C standard." The SDK asks for
+  # C_STANDARD 99, but CMake treats that as a minimum and emits no -std flag when
+  # the compiler default is already newer, so set it here. 201710L is on the list.
+  # CMake 4.x dropped compatibility with cmake_minimum_required(VERSION <3.5), which
+  # the bundled deps (azure-macro-utils-c, umock-c, ...) still declare, so configure
+  # fails outright there. Raising the floor fixes it. CMake 3.x still accepts those
+  # declarations unaided and just reports the variable as unused -- harmless.
   cmake -S "$AZURE_DIR" -B "$AZURE_DIR/cmake" \
       -DCMAKE_BUILD_TYPE=Release \
       -Dskip_samples=ON \
+      -DCMAKE_C_FLAGS="-std=gnu17" \
+      -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
       -Wno-dev
   cmake --build "$AZURE_DIR/cmake" -j$(nproc)
   cmake --install "$AZURE_DIR/cmake"
@@ -442,12 +454,25 @@ if stage_is_done deps-sample-app-prereqs; then
 else
   echo "--- Sample-app build prerequisites ---"
   apt-get update
+
+  # libglapi-mesa is a real package through Ubuntu 24.04, but Mesa folded libglapi
+  # into libgallium for 25.04+, leaving it a virtual package with no installation
+  # candidate (apt then fails outright). Fall back to the provider on newer releases.
+  GLAPI_APT_PKG=libglapi-mesa
+  GLAPI_CANDIDATE=$(apt-cache policy libglapi-mesa 2>/dev/null | awk '/Candidate:/ {print $2; exit}')
+  if [[ -z "$GLAPI_CANDIDATE" || "$GLAPI_CANDIDATE" = "(none)" ]]; then
+    echo "    libglapi-mesa: no install candidate; using provider mesa-libgallium"
+    GLAPI_APT_PKG=mesa-libgallium
+  else
+    echo "    libglapi-mesa: installing candidate ${GLAPI_CANDIDATE}"
+  fi
+
   apt-get install -y \
     libgstreamer-plugins-base1.0-dev libgstreamer1.0-dev \
     libgstrtspserver-1.0-dev libx11-dev \
     gstreamer1.0-libav libavahi-compat-libdnssd-dev \
     libjson-glib-dev libjsoncpp-dev libyaml-cpp-dev \
-    libgbm1 libglapi-mesa libgles-dev libglvnd-dev libegl-dev \
+    libgbm1 "${GLAPI_APT_PKG}" libgles-dev libglvnd-dev libegl-dev \
     rapidjson-dev
   mark_stage_done deps-sample-app-prereqs
   echo "    Stage deps-sample-app-prereqs: DONE"
