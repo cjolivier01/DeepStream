@@ -72,7 +72,9 @@ bash build/build.sh
   `sample_apps`, `yolo`, `tao_apps`, `reference_apps`, `service-maker`) → `install.sh`.
 - Common flags: `--only=STAGE[,STAGE]`, `--resume`, `--skip-deps`, `--skip-artifacts`,
   `--install-method=deb|tar`, `--verbose`, `-j N`.
-- Defaults: `CUDA_VER=13.2`, `NVDS_VERSION=9.2.0` (install tree uses the truncated `9.2`). Outputs install to
+- Defaults: `CUDA_VER=13.2` (if absent, falls back to whatever `/usr/local/cuda`
+  resolves to, but only when the major version matches — otherwise the build stops;
+  an explicit `CUDA_VER` always wins), `NVDS_VERSION=9.2.0` (install tree uses the truncated `9.2`). Outputs install to
   `/opt/nvidia/deepstream/deepstream-9.2/`.
 - Each run writes a transcript to `build/build.log`; stage state lives in
   `build/.stage-state*` (enables `--resume`).
