@@ -46,6 +46,8 @@ Options:
   --version VERSION      Full Debian package version; overrides the composed
                          version above, build tag included
   --force                Build even when the host is not Ubuntu 26.04/resolute
+  --dry-run              Print the resolved package name, version and output
+                         path, then exit without building anything
   -h, --help             Show this help
 
 Environment overrides:
@@ -88,8 +90,14 @@ DEB_USER=${DEB_USER:-${USER:-$(id -un)}}
 DEB_BUILD_NUMBER=${DEB_BUILD_NUMBER:-}
 DEB_VERSION=${DEB_VERSION:-}
 FORCE=0
+DRY_RUN=0
 
 while [[ $# -gt 0 ]]; do
+  # Accept "--opt=value" as well as "--opt value", as build/package.sh does.
+  if [[ "$1" == --*=* ]]; then
+    set -- "${1%%=*}" "${1#*=}" "${@:2}"
+  fi
+
   case "$1" in
     --output-dir)
       [[ $# -ge 2 ]] || { echo "error: --output-dir requires a value" >&2; exit 2; }
@@ -118,6 +126,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --force)
       FORCE=1
+      shift
+      ;;
+    --dry-run)
+      DRY_RUN=1
       shift
       ;;
     -h|--help)
@@ -183,6 +195,16 @@ if [[ "$FORCE" -eq 0 ]]; then
     echo "       Use --force if you intentionally want to build it here." >&2
     exit 1
   fi
+fi
+
+DEB_PATH="$OUT_DIR/${PKG_NAME}_${DEB_VERSION}_${ARCH}.deb"
+
+if [[ "$DRY_RUN" -eq 1 ]]; then
+  echo "Package      : $PKG_NAME"
+  echo "Version      : $DEB_VERSION"
+  echo "Build number : $DEB_BUILD_NUMBER"
+  echo "Would write  : $DEB_PATH"
+  exit 0
 fi
 
 required_paths=(
@@ -320,7 +342,6 @@ EOF
 
 find "$PKG_DIR" -type d -exec chmod 0755 {} +
 
-DEB_PATH="$OUT_DIR/${PKG_NAME}_${DEB_VERSION}_${ARCH}.deb"
 dpkg-deb --build --root-owner-group "$PKG_DIR" "$DEB_PATH"
 
 echo "Built: $DEB_PATH"

@@ -496,10 +496,17 @@ above the untagged `9.2.0-1+resolute1`. The number itself lives in
 
 ### Build and publish
 
+The root [`Makefile`](../Makefile) drives it; `make` on its own lists every
+target:
+
 | Command | Effect |
 |---|---|
 | `make deb` | Build the deb into the repo root at the current build number; no git side effects |
-| `make publish` | Increment the build number, build the deb into the repo root, then commit and push `build/deb-build-number` |
+| `make install` | Build it, then `apt install` it (prompts for sudo) |
+| `make publish` | Increment the build number, build the deb, then commit and push `build/deb-build-number` |
+| `make publish-dry-run` | Show the next version, output path and push target without building, committing or pushing |
+| `make clean` | Remove your own compatibility debs from the output directory |
+| `make distclean` / `make expunge` | Remove every locally built compatibility deb there |
 
 `make publish` records, commits and pushes the new number **only after the deb
 builds successfully** — a failed build leaves the tracked number untouched. The
@@ -508,17 +515,30 @@ staged changes are left alone, and it pushes to the current branch's configured
 remote (`origin` when the branch has none). If the push is rejected, rebase and
 push by hand rather than re-running `publish`, which would burn another number.
 
-Overrides:
+`clean` and `distclean` only match names carrying a `-<user>-<build-number>`
+tag, so neither can delete NVIDIA's own `deepstream-9.2_9.2.0-1_amd64.deb`.
+
+Variables:
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `DEB_USER` | `id -un` | User component of the version tag |
+| `DEB_OUTPUT_DIR` | repo root | Where the deb is written |
+| `NVDS_VERSION` | `9.2.0` | Selects the package name (`deepstream-9.2`) |
+| `PACKAGE_VERSION` | — | Full Debian version override; skips the build tag |
+| `INSTALL_ROOT` | `/opt/nvidia/deepstream/deepstream-9.2` | Install root to register |
+| `FORCE` | — | `FORCE=1` builds on a host that is not 26.04/resolute |
 
 ```bash
-make publish DEB_USER=ci            # user component of the version tag
-make deb COMPAT_DEB_FLAGS=--force   # build on a host that is not 26.04/resolute
+make publish DEB_USER=ci
+make deb FORCE=1 DEB_OUTPUT_DIR=/tmp/debs
 
-# Full option list (output dir, install root, explicit version, …)
+# The script takes the same settings as flags, in either --opt value or
+# --opt=value form:
 bash scripts/build_deepstream_ubuntu26_compat_deb.sh --help
 ```
 
-Generated debs are gitignored at the repo root. Install one with:
+Generated debs are gitignored at the repo root. Install one by hand with:
 
 ```bash
 sudo apt install ./deepstream-9.2_9.2.0-1+resolute1-jdoe-7_amd64.deb
