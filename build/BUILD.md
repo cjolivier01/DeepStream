@@ -36,11 +36,16 @@ For installation instructions, refer to the official [DeepStream SDK Installatio
 
 ---
 
-### Install cmake and wget
+### Install cmake, wget and patch
 
 ```bash
-sudo apt-get install cmake wget
+sudo apt-get install cmake wget patch
 ```
+
+`patch` is used by the `tao_apps` stage to apply `build/patches/` to the
+`nvocdr` submodule (see [Vendored submodule patches](#vendored-submodule-patches)).
+Toolchains that pull in `build-essential` already have it; minimal or
+runtime-based container images often do not.
 
 ### x86 (dGPU)
 
@@ -292,6 +297,40 @@ Default CUDA version is `13.2` (`13.0` for IGX Thor systems). Set `CUDA_VER` acc
 ```bash
 CUDA_VER=13.2 bash build/build.sh
 ```
+
+If that default is not installed, the build uses whatever `/usr/local/cuda`
+resolves to — the symlink `update-alternatives` maintains — provided its **major
+version matches**. A mismatch stops the build rather than proceeding:
+
+```
+error: this DeepStream release needs CUDA 13.x, but CUDA 13.2 is not
+       installed and /usr/local/cuda resolves to 12.9. The prebuilt libraries
+       link libcudart.so.13, so mixing majors would break at runtime.
+```
+
+The prebuilt proprietary libraries installed by the `artifacts` stage link a
+specific `libcudart` soname. Building source components against a different
+major loads two CUDA runtimes into one process, which links and starts cleanly
+and then misbehaves — hence the hard stop. An explicit `CUDA_VER=<ver>`, from
+the environment or the command line, always wins and is never second-guessed.
+
+A number of component Makefiles hardcode the unversioned `/usr/local/cuda`
+rather than `/usr/local/cuda-$(CUDA_VER)`. When the symlink disagrees with the
+selected version the build warns, because those components will follow the
+symlink regardless; point `update-alternatives --config cuda` at the matching
+toolkit to silence it.
+
+### Vendored submodule patches
+
+`build/patches/<submodule>/*.patch` holds local fixes to vendored submodules
+this repository cannot commit to. They are applied with `patch -p1` during the
+stage that builds the submodule — currently `tao_apps`, for `nvocdr` — next to
+the existing `Makefile.nvocdr` copy that already rewrites a file there.
+
+Re-applying is a no-op, so repeat builds and `--resume` are safe. The side
+effect is that the submodule work tree stays modified, so `git status` reports
+`modified content` for it and a submodule SHA bump may need
+`git submodule update -f`. Remove a patch once the fix lands upstream.
 
 To override the DeepStream version (default: `9.2.0`, must be `MAJOR.MINOR.PATCH`;
 the install tree uses the truncated `MAJOR.MINOR` form). The GitHub Release

@@ -1,0 +1,20 @@
+SimpleTokenizer.cpp: include <sstream>
+
+std::istringstream and std::ostringstream are used but only <fstream> and
+<iostream> are included. Newer libstdc++ (GCC 13+) no longer pulls <sstream>
+in transitively, so the types are incomplete:
+
+  error: variable 'std::istringstream iss' has initializer but incomplete type
+  error: aggregate 'std::ostringstream result' has incomplete type
+
+Carried here because nvocdr is an upstream submodule this repository cannot
+commit to; remove once the fix lands upstream.
+
+--- a/src/SimpleTokenizer.cpp
++++ b/src/SimpleTokenizer.cpp
+@@ -1,4 +1,5 @@
+ #include <fstream>
+ #include <iostream>
++#include <sstream>
+ #include "SimpleTokenizer.h"
+ 

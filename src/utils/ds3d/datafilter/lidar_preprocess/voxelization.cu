@@ -16,6 +16,7 @@
  */
 
 #include <cuda_fp16.h>
+#include <cstdint>
 #include <memory>
 #include <vector>
 #include "voxelization.hpp"

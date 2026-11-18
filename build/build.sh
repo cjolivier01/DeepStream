@@ -136,7 +136,10 @@ Packaging (--package / --package-format=):
   both  Both (default).
 
 Environment variables (alternative to CLI):
-  CUDA_VER                CUDA toolkit version (default: 13.0 on IGX; 13.2 otherwise)
+  CUDA_VER                CUDA toolkit version (default: 13.0 on IGX; 13.2 otherwise).
+                          If that version is not installed, the toolkit that
+                          /usr/local/cuda resolves to is used instead, provided
+                          its major version matches; otherwise the build stops.
   NVDS_VERSION            MAJOR.MINOR.PATCH (default: 9.2.0); the install
                           tree uses MAJOR.MINOR only. GitHub Release
                           proprietary-libs / sample-data assets are always
@@ -228,6 +231,23 @@ if [[ "$PLATFORM" == "aarch64" ]] && is_igx_system; then
   CUDA_VER_DEFAULT=13.0
 fi
 
+# Resolve the CUDA the system actually points at. /usr/local/cuda is managed by
+# update-alternatives, so it tracks the installed toolkit even when that differs
+# from the pinned default. Echoes MAJOR.MINOR, or fails if it is not a usable
+# versioned CUDA tree: missing symlink, dangling target, unexpected layout, or a
+# runtime-only install with no compiler.
+detect_cuda_ver() {
+  local resolved ver
+  resolved=$(readlink -f /usr/local/cuda 2>/dev/null) || return 1
+  [[ -d "$resolved" ]] || return 1
+  ver=${resolved##*/cuda-}
+  [[ "$ver" =~ ^[0-9]+\.[0-9]+$ ]] || return 1
+  # Every consumer hardcodes /usr/local/cuda-$CUDA_VER, so it is that versioned
+  # path, not the resolved one, that has to be a real toolkit.
+  [[ -x "/usr/local/cuda-$ver/bin/nvcc" ]] || return 1
+  printf '%s' "$ver"
+}
+
 SKIP_DEPS=0
 # SBSA bare-metal DeepStream installation is not supported; artifacts are shipped
 # inside the Docker container only. Skip the artifacts stage automatically on SBSA.
@@ -239,7 +259,9 @@ RESUME=0
 KEEP_ASSETS=0
 ONLY_STAGES=()
 JOBS=$(nproc 2>/dev/null || echo 4)
-CUDA_VER=${CUDA_VER:-$CUDA_VER_DEFAULT}
+# Left empty when unset so the CUDA_VER=<ver> argument, parsed below, can still
+# be distinguished from the default. Resolved right after the parsing loop.
+CUDA_VER=${CUDA_VER:-}
 NVDS_VERSION=${NVDS_VERSION:-9.2.0}
 INSTALL_METHOD=${INSTALL_METHOD:-deb}
 DO_PACKAGE=0
@@ -589,6 +611,42 @@ run_submake() {
   fi
 }
 
+# Apply local fixes to a vendored submodule we cannot commit to.
+#
+# $1 is the submodule work tree, $2 a directory of *.patch applied in sorted
+# order with -p1. Uses patch(1) rather than `git apply` on purpose: a submodule
+# checked out or built under a different user makes git refuse the directory
+# outright ("detected dubious ownership"), which patch(1) does not care about.
+#
+# Idempotent: a patch that reverse-applies cleanly is already in place and is
+# skipped, so repeat builds and --resume are safe. Missing submodule or patch
+# directory is not an error; a patch that will not apply is.
+apply_vendor_patches() {
+  local target=$1 patch_dir=$2 p name
+  [[ -d "$target" && -d "$patch_dir" ]] || return 0
+  # Checked up front: without it every patch below fails with status 127, which
+  # is indistinguishable from a genuine conflict once stderr is discarded.
+  if ! command -v patch >/dev/null 2>&1; then
+    echo "error: patch(1) not found, needed to apply $patch_dir to $target" >&2
+    echo "       Install it: sudo apt-get install -y patch" >&2
+    return 1
+  fi
+  for p in "$patch_dir"/*.patch; do
+    [[ -f "$p" ]] || continue   # no matches: the glob stayed literal
+    name=$(basename "$p")
+    if run_as_root patch -p1 -d "$target" --reverse --dry-run --force <"$p" >/dev/null 2>&1; then
+      echo "==> vendor patch $name: already applied"
+    elif run_as_root patch -p1 -d "$target" --forward --no-backup-if-mismatch <"$p"; then
+      echo "==> vendor patch $name: applied"
+    else
+      # patch's own output is left on stdout/stderr above; it names the file and
+      # hunk, which is the only useful thing to go on when a submodule moves.
+      echo "error: could not apply $name to $target" >&2
+      return 1
+    fi
+  done
+}
+
 run_submake_quiet() {
   run_as_root make -j"$JOBS" "$@" 2>/dev/null
 }
@@ -620,6 +678,65 @@ BUILD_LOG="$SCRIPT_DIR/build.log"
 exec > >(tee "$BUILD_LOG") 2>&1
 
 echo "==> Build log: $BUILD_LOG (overwritten each run)"
+
+# CUDA_VER is resolved here, deliberately late: after the environment and the
+# command line have both been seen, so an explicit choice is never second-guessed
+# and --help / --deepstream-libraries-wheel (neither of which needs CUDA) are
+# never blocked by a toolkit problem; and after the log starts capturing, so the
+# diagnostics below survive in build.log rather than only on the terminal.
+#
+# With nothing requested, prefer the pinned default and fall back to whatever
+# /usr/local/cuda resolves to only when the pinned tree is unusable: a machine
+# provisioned with the expected CUDA keeps using it even if alternatives points
+# elsewhere. The usability test matches detect_cuda_ver -- an empty or
+# half-removed cuda-$CUDA_VER_DEFAULT directory must not defeat the fallback.
+cuda_install_hint() {
+  if [[ "$PLATFORM" = "aarch64" ]]; then
+    echo "       Flash a JetPack release carrying CUDA ${1}.x, or pass CUDA_VER=<ver> to override." >&2
+  else
+    echo "       Install CUDA ${1}.x, or pass CUDA_VER=<ver> to override deliberately." >&2
+  fi
+}
+
+if [[ -z "$CUDA_VER" ]]; then
+  if [[ ! -x "/usr/local/cuda-$CUDA_VER_DEFAULT/bin/nvcc" ]] && _detected_cuda_ver=$(detect_cuda_ver); then
+    # Refuse to pick a different major on our own. The prebuilt proprietary
+    # libraries installed by the artifacts stage link a specific libcudart
+    # soname, so building source components against another major loads two CUDA
+    # runtimes into one process -- which links and starts cleanly, then
+    # misbehaves. CUDA_VER=<ver> stays available for anyone who means it.
+    if [[ "${_detected_cuda_ver%%.*}" != "${CUDA_VER_DEFAULT%%.*}" ]]; then
+      echo "error: this DeepStream release needs CUDA ${CUDA_VER_DEFAULT%%.*}.x, but CUDA $CUDA_VER_DEFAULT is not" >&2
+      echo "       installed and /usr/local/cuda resolves to $_detected_cuda_ver. The prebuilt libraries link" >&2
+      echo "       libcudart.so.${CUDA_VER_DEFAULT%%.*}, so mixing majors would break at runtime." >&2
+      cuda_install_hint "${CUDA_VER_DEFAULT%%.*}"
+      exit 1
+    fi
+    echo "==> CUDA $CUDA_VER_DEFAULT not installed; using $_detected_cuda_ver from /usr/local/cuda"
+  fi
+  CUDA_VER="${_detected_cuda_ver:-$CUDA_VER_DEFAULT}"
+fi
+
+if [[ ! -x "/usr/local/cuda-$CUDA_VER/bin/nvcc" ]]; then
+  echo "error: CUDA $CUDA_VER selected, but /usr/local/cuda-$CUDA_VER/bin/nvcc is missing." >&2
+  echo "       Without this the build fails later, one component at a time, with" >&2
+  echo "       'no such file /usr/local/cuda-$CUDA_VER/include' and no clear cause." >&2
+  cuda_install_hint "${CUDA_VER%%.*}"
+  exit 1
+fi
+
+# Around fifty Makefile references use the unversioned /usr/local/cuda rather
+# than /usr/local/cuda-$(CUDA_VER) -- five of them to invoke nvcc -- so when the
+# symlink disagrees with CUDA_VER those components build against a different
+# toolkit than the rest. Across a major that is the same two-runtimes-in-one-
+# process hazard as above. Warn only: the choice here was either explicit or
+# already validated, and refusing would break setups that work today.
+if _symlink_cuda_ver=$(detect_cuda_ver) \
+   && [[ "${_symlink_cuda_ver%%.*}" != "${CUDA_VER%%.*}" ]]; then
+  echo "==> warning: building with CUDA $CUDA_VER, but /usr/local/cuda points at $_symlink_cuda_ver."
+  echo "    Components hardcoding the unversioned path will use $_symlink_cuda_ver, mixing CUDA"
+  echo "    majors in one process. Repoint it (update-alternatives --config cuda) to match."
+fi
 echo "==> Building PLATFORM=$PLATFORM CUDA_VER=$CUDA_VER NVDS_VERSION=$NVDS_VERSION (outputs to /opt/nvidia/deepstream/deepstream-${NVDS_VERSION}/)"
 echo "==> Using cmake: $CMAKE_BIN (jobs: $JOBS)"
 if [[ ${#ONLY_STAGES[@]} -gt 0 ]]; then
@@ -1001,6 +1118,9 @@ if begin_stage tao_apps; then
   fi
   run_as_root cp  src/apps/tao_apps/apps/tao_others/deepstream-nvocdr-app/Makefile.nvocdr \
     src/apps/tao_apps/apps/tao_others/deepstream-nvocdr-app/nvocdr/deepstream/Makefile
+  apply_vendor_patches \
+    src/apps/tao_apps/apps/tao_others/deepstream-nvocdr-app/nvocdr \
+    "$SCRIPT_DIR/patches/nvocdr" || FAILED_BUILDS+=("nvocdr patches")
   run_submake -C src/apps/tao_apps $MK || FAILED_BUILDS+=("src/apps/tao_apps")
   if ! stage_had_failures "$_fb_before"; then
     finish_stage tao_apps

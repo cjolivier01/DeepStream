@@ -44,10 +44,16 @@ SRCFILES:= nvds_stats.cpp
 
 TARGET_LIB:= libnvds_stats.so
 
-NVML_LIB:= -lnvidia-ml
+# The CUDA toolkit ships the libnvidia-ml.so linker name under lib64/stubs; the
+# driver package installs only libnvidia-ml.so.1, so -lnvidia-ml does not resolve
+# from the default search path. The stub carries the same SONAME, so the real
+# driver library is still what gets loaded at runtime.
+NVML_LIB:= -L/usr/local/cuda-$(CUDA_VER)/lib64/stubs -lnvidia-ml
 
-# Jetson needs its architecture-specific NVML location. SBSA provides the
-# standard linker name, so preserve the default when build.sh sets this flag.
+# Jetson needs its architecture-specific NVML location, and replaces the value
+# above outright (dropping the stubs path with it). SBSA keeps the default: if
+# its CUDA tree has no stubs directory the -L is simply ignored and -lnvidia-ml
+# resolves from the system path, as it did before.
 ifeq ($(TARGET_DEVICE),aarch64)
 ifneq ($(AARCH64_IS_SBSA),1)
 	NVML_LIB:= /usr/lib/aarch64-linux-gnu/nvidia/libnvidia-ml.so.1

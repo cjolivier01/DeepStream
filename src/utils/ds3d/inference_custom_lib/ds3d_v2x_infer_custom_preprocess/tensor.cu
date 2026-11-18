@@ -20,6 +20,7 @@
 #include <string.h>
 
 #include <algorithm>
+#include <cstdint>
 #include <numeric>
 #include <unordered_map>
 

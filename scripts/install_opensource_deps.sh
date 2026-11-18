@@ -473,7 +473,7 @@ else
     gstreamer1.0-libav libavahi-compat-libdnssd-dev \
     libjson-glib-dev libjsoncpp-dev libyaml-cpp-dev \
     libgbm1 "${GLAPI_APT_PKG}" libgles-dev libglvnd-dev libegl-dev \
-    rapidjson-dev
+    rapidjson-dev patch
   mark_stage_done deps-sample-app-prereqs
   echo "    Stage deps-sample-app-prereqs: DONE"
 fi
