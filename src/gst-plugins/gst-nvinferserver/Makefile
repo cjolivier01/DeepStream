@@ -124,12 +124,26 @@ ALL_PROTOS_PBH := $(notdir $(ALL_PROTOS:.proto=.pb.h))
 
 INCS += \
     $(INFERSERVER_PROTOS) \
-    $(ALL_PROTOS_PBCC) \
-    $(ALL_PROTOS_PBH) \
     $(NULL)
+
+# The generated protobuf sources are deliberately kept out of INCS. INCS is a
+# prerequisite of the %.o pattern rules below, and GNU Make 4.4 no longer lets a
+# pattern rule match when one of its prerequisites neither exists nor is built
+# by an explicit rule -- these are produced by the %.pb.h %.pb.cc pattern rule
+# at the bottom of this file. Make then quietly falls through to its built-in
+# %.o: %.cpp recipe, which carries none of the flags set here, and the first
+# #include fails with "gst/gst.h: No such file or directory". Make 4.3 and
+# earlier accepted the pattern rule, so this only shows up on newer distros
+# (Ubuntu 26.04 ships Make 4.4.1), and only on a tree where the generated files
+# are absent -- any previous build leaves them behind and hides it.
+#
+# The ordering they provided still matters, so require them explicitly below --
+# after the default goal, since the first target in the file wins that role.
 
 
 all: $(LIB)
+
+$(OBJS): $(ALL_PROTOS_PBH)
 
 %.o: %.cc $(INCS) Makefile
 	$(CXX) -c -o $@ $(CFLAGS) $<
