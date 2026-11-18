@@ -40,8 +40,8 @@ OBJS:= $(SRCS:.c=.o)
 OBJS:= $(OBJS:.cpp=.o)
 
 # strptime() is guarded by __USE_XOPEN, so it needs a feature-test macro set
-# before any system header. The app header defines _XOPEN_SOURCE after including
-# <time.h>, which is too late to have any effect; define it on the command line.
+# before any system header -- which a #define inside an app header cannot do.
+# Hence the command line.
 CFLAGS+= -D_GNU_SOURCE
 CFLAGS+= -I../../../../../apps/apps-common/includes \
          -I../../../../../apps/sample_apps/deepstream-app/ \

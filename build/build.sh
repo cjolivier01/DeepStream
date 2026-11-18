@@ -375,34 +375,6 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 
-# Resolve CUDA_VER now that both the environment and the command line have been
-# seen, so an explicit choice is never second-guessed and --help never has to
-# care. When nothing was requested, prefer the pinned default and fall back to
-# whatever /usr/local/cuda resolves to only if the pinned tree is missing: a
-# machine provisioned with the expected CUDA keeps using it even if alternatives
-# points elsewhere.
-#
-# The major version must match either way. The prebuilt proprietary libraries
-# installed by the artifacts stage link a specific libcudart soname, so building
-# source components against a different major would load two CUDA runtimes into
-# one process -- which links and starts cleanly, then misbehaves. Refuse instead,
-# and let CUDA_VER=<ver> override for anyone who really means it.
-CUDA_VER_NOTICE=
-if [[ -z "$CUDA_VER" ]]; then
-  if [[ ! -d "/usr/local/cuda-$CUDA_VER_DEFAULT" ]] && _detected_cuda_ver=$(detect_cuda_ver); then
-    if [[ "${_detected_cuda_ver%%.*}" != "${CUDA_VER_DEFAULT%%.*}" ]]; then
-      echo "error: this DeepStream release needs CUDA ${CUDA_VER_DEFAULT%%.*}.x, but CUDA $CUDA_VER_DEFAULT is not" >&2
-      echo "       installed and /usr/local/cuda resolves to $_detected_cuda_ver. The prebuilt libraries link" >&2
-      echo "       libcudart.so.${CUDA_VER_DEFAULT%%.*}, so mixing majors would break at runtime." >&2
-      echo "       Install CUDA ${CUDA_VER_DEFAULT%%.*}.x, or pass CUDA_VER=<ver> to override deliberately." >&2
-      exit 1
-    fi
-    CUDA_VER_NOTICE="==> CUDA $CUDA_VER_DEFAULT not installed; using $_detected_cuda_ver from /usr/local/cuda"
-    CUDA_VER_DEFAULT="$_detected_cuda_ver"
-  fi
-  CUDA_VER="$CUDA_VER_DEFAULT"
-fi
-
 # NVDS_VERSION must be MAJOR.MINOR.PATCH (default: 9.2.0). MAJOR.MINOR alone is
 # rejected so install paths and packaging stay unambiguous; the install tree
 # and every downstream make/install.sh invocation use the truncated
@@ -476,6 +448,55 @@ for s in "${ONLY_STAGES[@]}"; do
     exit 1
   fi
 done
+
+# Resolve CUDA_VER now that the environment, the command line and the argument
+# validations have all been seen, so an explicit choice is never second-guessed,
+# and so --help and the --deepstream-libraries-wheel short-circuit (neither of
+# which needs CUDA at all) are never blocked by a toolkit problem.
+#
+# With nothing requested, prefer the pinned default and fall back to whatever
+# /usr/local/cuda resolves to only when the pinned tree is missing: a machine
+# provisioned with the expected CUDA keeps using it even if alternatives points
+# elsewhere.
+CUDA_VER_NOTICE=
+if [[ -z "$CUDA_VER" ]]; then
+  if [[ ! -d "/usr/local/cuda-$CUDA_VER_DEFAULT" ]] && _detected_cuda_ver=$(detect_cuda_ver); then
+    # Refuse to pick a different major on our own. The prebuilt proprietary
+    # libraries installed by the artifacts stage link a specific libcudart
+    # soname, so building source components against another major loads two CUDA
+    # runtimes into one process -- which links and starts cleanly, then
+    # misbehaves. CUDA_VER=<ver> stays available for anyone who means it.
+    if [[ "${_detected_cuda_ver%%.*}" != "${CUDA_VER_DEFAULT%%.*}" ]]; then
+      echo "error: this DeepStream release needs CUDA ${CUDA_VER_DEFAULT%%.*}.x, but CUDA $CUDA_VER_DEFAULT is not" >&2
+      echo "       installed and /usr/local/cuda resolves to $_detected_cuda_ver. The prebuilt libraries link" >&2
+      echo "       libcudart.so.${CUDA_VER_DEFAULT%%.*}, so mixing majors would break at runtime." >&2
+      echo "       Install CUDA ${CUDA_VER_DEFAULT%%.*}.x, or pass CUDA_VER=<ver> to override deliberately." >&2
+      exit 1
+    fi
+    CUDA_VER_NOTICE="==> CUDA $CUDA_VER_DEFAULT not installed; using $_detected_cuda_ver from /usr/local/cuda"
+  fi
+  CUDA_VER="${_detected_cuda_ver:-$CUDA_VER_DEFAULT}"
+fi
+
+if [[ ! -d "/usr/local/cuda-$CUDA_VER" ]]; then
+  echo "error: CUDA $CUDA_VER selected but /usr/local/cuda-$CUDA_VER does not exist." >&2
+  echo "       Install it, or pass CUDA_VER=<ver> naming a toolkit under /usr/local." >&2
+  exit 1
+fi
+
+# Roughly two dozen component Makefiles hardcode the unversioned /usr/local/cuda
+# instead of /usr/local/cuda-$(CUDA_VER), so when the symlink disagrees with
+# CUDA_VER those components build against a different toolkit than the rest.
+# Across a major that is the same two-runtimes-in-one-process hazard as above.
+# Only warn: this configuration predates the fallback, and the choice here was
+# explicit or already validated, so refusing would break setups that exist.
+if _symlink_cuda_ver=$(detect_cuda_ver) \
+   && [[ "${_symlink_cuda_ver%%.*}" != "${CUDA_VER%%.*}" ]]; then
+  CUDA_VER_NOTICE="==> warning: building with CUDA $CUDA_VER, but /usr/local/cuda points at
+    $_symlink_cuda_ver. Components that hardcode the unversioned path will use
+    $_symlink_cuda_ver, mixing CUDA majors in one process. Repoint
+    /usr/local/cuda (update-alternatives --config cuda) to match."
+fi
 
 if [[ "$RESUME" -eq 0 ]]; then
   reset_stage_state
@@ -657,7 +678,7 @@ apply_vendor_patches() {
     name=$(basename "$p")
     if run_as_root patch -p1 -d "$target" --reverse --dry-run --force <"$p" >/dev/null 2>&1; then
       echo "==> vendor patch $name: already applied"
-    elif run_as_root patch -p1 -d "$target" --forward <"$p" >/dev/null 2>&1; then
+    elif run_as_root patch -p1 -d "$target" --forward --no-backup-if-mismatch <"$p" >/dev/null 2>&1; then
       echo "==> vendor patch $name: applied"
     else
       echo "error: could not apply $name to $target" >&2
