@@ -50,7 +50,10 @@ CFLAGS+= -I. \
 	 -I../../../../includes \
 	 -I/usr/local/cuda-$(CUDA_VER)/include
 
-CFLAGS+= -fPIC -DHAVE_CONFIG_H -DNDEBUG -std=c++17 \
+# GLM 0.9.9+ requires GLM_ENABLE_EXPERIMENTAL to opt in to the GLM_GTX_* headers
+# (quaternion, norm, component_wise) used by the render contexts; without it the
+# headers hard-#error. Ubuntu 26.04 ships GLM 1.0.1, which enforces this.
+CFLAGS+= -fPIC -DHAVE_CONFIG_H -DNDEBUG -std=c++17 -DGLM_ENABLE_EXPERIMENTAL \
 	 -Wall -Werror -Wno-deprecated-declarations
 
 CFLAGS+= $(shell pkg-config --cflags $(PKGS))

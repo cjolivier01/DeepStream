@@ -44,6 +44,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
+#include <algorithm>
 #include <list>
 #include "nvbufsurface.h"
 #include "gst-nvevent.h"

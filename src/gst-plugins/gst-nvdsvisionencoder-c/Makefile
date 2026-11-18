@@ -53,7 +53,12 @@ CFLAGS+= $(shell pkg-config --cflags $(PKGS))
 NVCC_CFLAGS:= -I. \
 	 -I../../../includes \
 	 -I/usr/local/cuda-$(CUDA_VER)/include
-NVCC_CFLAGS+= $(shell pkg-config --cflags glib-2.0)
+# glib-2.0's pkg-config cflags include -pthread, which nvcc rejects outright
+# ("nvcc fatal : Unknown option '-pthread'"). Route it to the host compiler and
+# pass the remaining flags straight through.
+GLIB_NVCC_CFLAGS:= $(shell pkg-config --cflags glib-2.0)
+NVCC_CFLAGS+= $(filter-out -pthread,$(GLIB_NVCC_CFLAGS))
+NVCC_CFLAGS+= $(patsubst -pthread,--compiler-options -pthread,$(filter -pthread,$(GLIB_NVCC_CFLAGS)))
 
 SRCS:= gstnvdsvisionencoder.c preprocess_sgie_style.c preprocess.cu trt_encoder.cpp
 OBJS:= gstnvdsvisionencoder.o preprocess_sgie_style.o preprocess.o trt_encoder.o

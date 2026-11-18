@@ -16,6 +16,7 @@
  */
 
 #include <string.h>
+#include <algorithm>
 #include <string>
 #include <sstream>
 #include <iostream>

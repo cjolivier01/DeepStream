@@ -228,6 +228,28 @@ if [[ "$PLATFORM" == "aarch64" ]] && is_igx_system; then
   CUDA_VER_DEFAULT=13.0
 fi
 
+# Resolve the CUDA the system actually points at. /usr/local/cuda is managed by
+# update-alternatives, so it tracks the installed toolkit even when that differs
+# from the pinned default. Echoes MAJOR.MINOR, or fails if it is not a versioned
+# CUDA tree (missing symlink, dangling target, unexpected layout).
+detect_cuda_ver() {
+  local resolved ver
+  resolved=$(readlink -f /usr/local/cuda 2>/dev/null) || return 1
+  [[ -d "$resolved" ]] || return 1
+  ver=${resolved##*/cuda-}
+  [[ "$ver" =~ ^[0-9]+\.[0-9]+$ ]] || return 1
+  printf '%s' "$ver"
+}
+
+# Only fall back to the detected toolkit when the pinned default is absent, so a
+# machine provisioned with the expected CUDA keeps using it even if alternatives
+# points elsewhere. An explicit CUDA_VER (env or CUDA_VER=<ver> argument) wins.
+if [[ -z "${CUDA_VER:-}" ]] && [[ ! -d "/usr/local/cuda-$CUDA_VER_DEFAULT" ]] \
+   && _detected_cuda_ver=$(detect_cuda_ver); then
+  echo "==> CUDA $CUDA_VER_DEFAULT not installed; using $_detected_cuda_ver from /usr/local/cuda" >&2
+  CUDA_VER_DEFAULT="$_detected_cuda_ver"
+fi
+
 SKIP_DEPS=0
 # SBSA bare-metal DeepStream installation is not supported; artifacts are shipped
 # inside the Docker container only. Skip the artifacts stage automatically on SBSA.
@@ -981,7 +1003,11 @@ if begin_stage yolo; then
   else
     echo "==> libeigen3-dev already installed"
   fi
-  run_as_root ln -sf /usr/include/eigen3/Eigen /usr/include/Eigen
+  # -n matters on reruns: without it the second build sees /usr/include/Eigen
+  # already resolving to a directory and creates the link *inside* it, leaving
+  # /usr/include/eigen3/Eigen/Eigen pointing at its own parent. Anything that
+  # walks /usr/include then spins until ELOOP.
+  run_as_root ln -sfn /usr/include/eigen3/Eigen /usr/include/Eigen
   run_user_make -C tools/yolo_deepstream/deepstream_yolo/nvdsinfer_custom_impl_Yolo/ $MK \
     || FAILED_BUILDS+=("tools/yolo_deepstream/deepstream_yolo/nvdsinfer_custom_impl_Yolo/")
   if ! stage_had_failures "$_fb_before"; then
