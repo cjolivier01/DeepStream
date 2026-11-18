@@ -27,8 +27,10 @@
 #include <string.h>
 #include <time.h>
 
-#define _DEFAULT_SOURCE
-#define _XOPEN_SOURCE
+/* _DEFAULT_SOURCE / _XOPEN_SOURCE used to be defined here, but a feature-test
+ * macro set after <time.h> has already been read does nothing except provoke
+ * redefinition warnings. The Makefile passes -D_GNU_SOURCE instead, which is
+ * what actually declares strptime(). */
 
 typedef struct
 {
