@@ -458,3 +458,68 @@ The generated `.deb` can then be installed on a target machine with:
 ```bash
 sudo apt install ./deepstream-<NVDS_VERSION>_<PKG_VERSION>-1_<arch>.deb
 ```
+
+---
+
+## Ubuntu 26.04 compatibility package (`make publish`)
+
+NVIDIA's all-in-one `deepstream-9.2` deb declares a versioned `libglapi-mesa`
+dependency that Ubuntu 26.04 (resolute) cannot satisfy, so it will not install
+there. On hosts where DeepStream was instead built and installed from this
+repository,
+[`scripts/build_deepstream_ubuntu26_compat_deb.sh`](../scripts/build_deepstream_ubuntu26_compat_deb.sh)
+builds a small **registration-only** deb that records `deepstream-9.2` in dpkg
+with dependencies that do resolve on 26.04, so packages depending on
+`deepstream-9.2` are satisfied.
+
+> **Metadata only.** The package holds a `control` file, maintainer scripts and
+> `/usr/share/doc` — roughly 2 KB, no DeepStream payload and no repo sources.
+> The runtime tree must already exist at
+> `/opt/nvidia/deepstream/<NVDS_VERSION>/` (the script aborts if it does not).
+> Its `postinst` writes `/etc/ld.so.conf.d/deepstream.conf` and runs `ldconfig`;
+> its `prerm` deliberately removes nothing, because the install tree belongs to
+> `scripts/install.sh` / `scripts/uninstall.sh`.
+
+### Versioning
+
+The version carries a per-user, monotonically increasing build tag:
+
+```text
+deepstream-9.2_<point-version>-<revision>-<user>-<build-number>_<arch>.deb
+deepstream-9.2_9.2.0-1+resolute1-jdoe-7_amd64.deb
+```
+
+dpkg splits a version at its last `-`, so the build number lands in the Debian
+revision field: `…-jdoe-7` sorts below `…-jdoe-10`, and any tagged build sorts
+above the untagged `9.2.0-1+resolute1`. The number itself lives in
+[`build/deb-build-number`](deb-build-number), which is tracked in git.
+
+### Build and publish
+
+| Command | Effect |
+|---|---|
+| `make deb` | Build the deb into the repo root at the current build number; no git side effects |
+| `make publish` | Increment the build number, build the deb into the repo root, then commit and push `build/deb-build-number` |
+
+`make publish` records, commits and pushes the new number **only after the deb
+builds successfully** — a failed build leaves the tracked number untouched. The
+commit is path-limited to `build/deb-build-number`, so unrelated working-tree or
+staged changes are left alone, and it pushes to the current branch's configured
+remote (`origin` when the branch has none). If the push is rejected, rebase and
+push by hand rather than re-running `publish`, which would burn another number.
+
+Overrides:
+
+```bash
+make publish DEB_USER=ci            # user component of the version tag
+make deb COMPAT_DEB_FLAGS=--force   # build on a host that is not 26.04/resolute
+
+# Full option list (output dir, install root, explicit version, …)
+bash scripts/build_deepstream_ubuntu26_compat_deb.sh --help
+```
+
+Generated debs are gitignored at the repo root. Install one with:
+
+```bash
+sudo apt install ./deepstream-9.2_9.2.0-1+resolute1-jdoe-7_amd64.deb
+```

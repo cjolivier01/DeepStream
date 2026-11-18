@@ -26,13 +26,25 @@ This is a compatibility registration package. It does not copy the full NVIDIA
 DeepStream payload into the deb. It expects DeepStream to have already been
 installed by this repository's build scripts under /opt/nvidia/deepstream.
 
+The package version carries a per-user build tag:
+
+  <point-version>-<revision>-<user>-<build-number>    e.g. 9.2.0-1+resolute1-jdoe-7
+
+The build number is monotonically increasing and is tracked in
+build/deb-build-number. `make publish` increments it, then commits and pushes
+that file once the deb has built successfully; this script only reads it.
+
 Options:
   --output-dir DIR       Directory for the generated deb
-                         default: artifacts/local-debs
+                         default: the repository root
   --install-root DIR     Existing DeepStream install root
                          default: /opt/nvidia/deepstream/deepstream-9.2
-  --version VERSION      Debian package version
-                         default: 9.2.0-1+resolute1
+  --build-number N       Build number component of the version
+                         default: the value in build/deb-build-number, else 0
+  --user NAME            User component of the version
+                         default: $USER
+  --version VERSION      Full Debian package version; overrides the composed
+                         version above, build tag included
   --force                Build even when the host is not Ubuntu 26.04/resolute
   -h, --help             Show this help
 
@@ -45,8 +57,11 @@ Environment overrides:
                          Upstream version of this repo's point release
   DEB_REVISION=1+resolute1
                          Debian revision, with local Ubuntu 26.04 suffix
-  DEB_VERSION=9.2.0-1+resolute1
-                         Full version; overrides DS_POINT_VERSION/DEB_REVISION
+  DEB_USER=...           Same as --user
+  DEB_BUILD_NUMBER=...   Same as --build-number
+  BUILD_NUMBER_FILE=...  File holding the build number
+                         default: build/deb-build-number
+  DEB_VERSION=...        Same as --version
   OUT_DIR=...            Same as --output-dir
   INSTALL_ROOT=...       Same as --install-root
 EOF
@@ -65,9 +80,13 @@ fi
 NVDS_VERSION=$(echo "$NVDS_VERSION" | cut -d. -f1,2)
 
 PKG_NAME="deepstream-${NVDS_VERSION}"
-DEB_VERSION=${DEB_VERSION:-${DS_POINT_VERSION}-${DEB_REVISION}}
 INSTALL_ROOT=${INSTALL_ROOT:-/opt/nvidia/deepstream/deepstream-${NVDS_VERSION}}
-OUT_DIR=${OUT_DIR:-artifacts/local-debs}
+# Resolved against the repo root once it is known, below.
+OUT_DIR=${OUT_DIR:-}
+BUILD_NUMBER_FILE=${BUILD_NUMBER_FILE:-}
+DEB_USER=${DEB_USER:-${USER:-$(id -un)}}
+DEB_BUILD_NUMBER=${DEB_BUILD_NUMBER:-}
+DEB_VERSION=${DEB_VERSION:-}
 FORCE=0
 
 while [[ $# -gt 0 ]]; do
@@ -80,6 +99,16 @@ while [[ $# -gt 0 ]]; do
     --install-root)
       [[ $# -ge 2 ]] || { echo "error: --install-root requires a value" >&2; exit 2; }
       INSTALL_ROOT=$2
+      shift 2
+      ;;
+    --build-number)
+      [[ $# -ge 2 ]] || { echo "error: --build-number requires a value" >&2; exit 2; }
+      DEB_BUILD_NUMBER=$2
+      shift 2
+      ;;
+    --user)
+      [[ $# -ge 2 ]] || { echo "error: --user requires a value" >&2; exit 2; }
+      DEB_USER=$2
       shift 2
       ;;
     --version)
@@ -105,8 +134,34 @@ done
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 REPO_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
+OUT_DIR=${OUT_DIR:-$REPO_ROOT}
 OUT_DIR=$(mkdir -p "$OUT_DIR" && cd "$OUT_DIR" && pwd)
+BUILD_NUMBER_FILE=${BUILD_NUMBER_FILE:-$REPO_ROOT/build/deb-build-number}
 ARCH=$(dpkg --print-architecture)
+
+# Debian upstream versions accept only alphanumerics and '.+-~:', so reduce the
+# user name to a safe token rather than letting dpkg-deb fail on it later.
+DEB_USER_TAG=$(printf '%s' "$DEB_USER" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9')
+if [[ -z "$DEB_USER_TAG" ]]; then
+  echo "error: user name '$DEB_USER' has no characters usable in a Debian version" >&2
+  echo "       Set DEB_USER or pass --user with an alphanumeric name." >&2
+  exit 2
+fi
+
+if [[ -z "$DEB_BUILD_NUMBER" && -r "$BUILD_NUMBER_FILE" ]]; then
+  DEB_BUILD_NUMBER=$(tr -d '[:space:]' <"$BUILD_NUMBER_FILE")
+fi
+DEB_BUILD_NUMBER=${DEB_BUILD_NUMBER:-0}
+
+if [[ ! "$DEB_BUILD_NUMBER" =~ ^[0-9]+$ ]]; then
+  echo "error: invalid build number '$DEB_BUILD_NUMBER' (expected a non-negative integer)" >&2
+  echo "       Source: ${BUILD_NUMBER_FILE}" >&2
+  exit 2
+fi
+
+# The trailing -<user>-<build-number> keeps locally published debs ordered by
+# dpkg: it splits on the last '-', so the build number is the Debian revision.
+DEB_VERSION=${DEB_VERSION:-${DS_POINT_VERSION}-${DEB_REVISION}-${DEB_USER_TAG}-${DEB_BUILD_NUMBER}}
 
 if [[ "$ARCH" != "amd64" ]]; then
   echo "error: this compatibility package is only defined for amd64; found $ARCH" >&2
