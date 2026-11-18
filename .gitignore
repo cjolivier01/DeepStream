@@ -39,6 +39,12 @@ artifacts/
 *.tar.gz
 *.tgz
 *.zip
+
+# Debian packages built locally; `make publish` writes the Ubuntu 26.04
+# compatibility deb to the repo root, and build/package.sh writes to build/
+/*.deb
+/build/*.deb
+
 .mcp.json
 .claude/settings.local.json
 

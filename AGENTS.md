@@ -90,6 +90,9 @@ After the first install, clear the GStreamer plugin cache: `rm -rf ~/.cache/gstr
 | Install system deps only | `sudo bash scripts/install_opensource_deps.sh` |
 | Install artifacts only | Not a separate step: the `artifacts` stage runs as part of a full `bash build/build.sh`. For a bare-metal install use the all-in-one package (see **GitHub Release Assets**). |
 | Clear GStreamer plugin cache | `rm -rf ~/.cache/gstreamer-1.0/` |
+| List packaging targets | `make` (root `Makefile`; the source build is `build/build.sh`, not `make`) |
+| Build Ubuntu 26.04 compat deb (metadata only) | `make deb` |
+| Publish it (bump build number, commit, push) | `make publish` — see `build/BUILD.md` |
 | Run DeepStream reference app | `deepstream-app -c <config-file>` |
 | Print environment (for diagnostics) | `bash scripts/print_env.sh` |
 | Install full SDK (bare-metal, x86) | deb: `sudo apt-get install -y ./deepstream-9.2_9.2.0-1_amd64.deb` \| tar: `tar -xjvf deepstream_sdk_v9.2.0_x86_64.tbz2 -C / && sudo ldconfig` |
