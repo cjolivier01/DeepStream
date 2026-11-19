@@ -54,6 +54,11 @@ CFLAGS+= \
 	-I../../../sample_apps/deepstream-app \
 	-I../eigen
 
+# Kept out of PKGS: pkg-config emits nothing at all when any one package in a
+# single invocation is missing, so a host without eigen3.pc would silently drop
+# the gstreamer and x11 flags too and fail on gst/gst.h instead of Eigen.
+CFLAGS+= $(shell pkg-config --cflags eigen3)
+
 LIBS+= \
 	-L$(CUDA_HOME)/lib64 -lcudart -lcuda \
 	-L$(LIB_INSTALL_DIR) -lnvdsgst_meta -lnvds_meta -lnvds_utils -lgstapp-1.0 \
