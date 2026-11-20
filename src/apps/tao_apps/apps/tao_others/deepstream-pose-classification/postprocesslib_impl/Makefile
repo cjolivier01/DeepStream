@@ -41,6 +41,11 @@ CFLAGS+= -fPIC \
 	 -I /opt/nvidia/deepstream/deepstream/sources/includes -I../includes  -I../../eigen/ -I./ \
 	 -I ../../../../../../gst-plugins/gst-nvdspostprocess/includes
 
+# Kept out of PKGS: pkg-config emits nothing at all when any one package in a
+# single invocation is missing, so a host without eigen3.pc would silently drop
+# the gstreamer flags too and fail on gst/gst.h instead of Eigen.
+CFLAGS+= $(shell pkg-config --cflags eigen3)
+
 GST_INSTALL_DIR?=/opt/nvidia/deepstream/deepstream/lib/gst-plugins/
 LIB_INSTALL_DIR?=/opt/nvidia/deepstream/deepstream/lib/
 

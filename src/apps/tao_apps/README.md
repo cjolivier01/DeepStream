@@ -80,8 +80,6 @@ uridecoderbin -->streammux-->nvinfer(detection)-->nvosd-->
 * Eigen development packages
   ```
     sudo apt install libeigen3-dev
-    cd /usr/include
-    sudo ln -sf eigen3/Eigen Eigen
   ```
 
 ## Download

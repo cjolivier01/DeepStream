@@ -37,8 +37,6 @@ Follow https://docs.nvidia.com/deepstream/9.2/text/DS_Quickstart to setup the De
 2. Install Eigen development packages
 ```
   sudo apt install libeigen3-dev
-  cd /usr/include
-  sudo ln -sf eigen3/Eigen Eigen
 ```
 
 ## Build the applications
