@@ -29,8 +29,6 @@ Please follow instructions in the `src/apps/sample_apps/deepstream-app/README` o
 1. Install libeigen3-dev
 ```bash
     $ sudo apt install libeigen3-dev
-    $ cd /usr/include
-    $ sudo ln -sf eigen3/Eigen Eigen
 ```
 2. prepare the models  
   [PeopleNet](https://catalog.ngc.nvidia.com/orgs/nvidia/teams/tao/models/peoplenet)  

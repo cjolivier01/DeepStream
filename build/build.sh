@@ -1098,7 +1098,6 @@ if begin_stage yolo; then
   else
     echo "==> libeigen3-dev already installed"
   fi
-  run_as_root ln -sf /usr/include/eigen3/Eigen /usr/include/Eigen
   run_user_make -C tools/yolo_deepstream/deepstream_yolo/nvdsinfer_custom_impl_Yolo/ $MK \
     || FAILED_BUILDS+=("tools/yolo_deepstream/deepstream_yolo/nvdsinfer_custom_impl_Yolo/")
   if ! stage_had_failures "$_fb_before"; then
