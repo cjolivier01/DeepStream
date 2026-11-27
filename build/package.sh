@@ -33,13 +33,17 @@
 #   -h, --help              Show this help and exit
 #   --format=FMT            What to build: deb | tar | both  (default: both)
 #   --arch=ARCH            Target debian arch: amd64 | arm64 (default: host)
+#   --distro=TAG            Distribution tag for the .deb filename, e.g.
+#                           ubuntu24.04 (default: auto; "none" to omit)
 #   --output-dir=PATH       Where to write the .deb / .tbz2 (default: build/)
 #   --stage-dir=PATH        Scratch staging directory (default: build/.pkg-stage)
 #   --keep-stage            Do not delete the staging dir on exit
+#   --print-deb-name        Print the .deb filename that would be built, exit
 #
 # Environment overrides (CLI flags take precedence):
 #   NVDS_VERSION   MAJOR.MINOR.PATCH (default: 9.2.0)
 #   PKG_VERSION    Package version recorded in control  (default: NVDS_VERSION)
+#   DISTRO_TAG     Distribution tag for the filename    (default: auto)
 # ---------------------------------------------------------------------------
 set -euo pipefail
 
@@ -59,15 +63,20 @@ NVDS_FULL_VERSION="$NVDS_VERSION"
 NVDS_VERSION="${NVDS_FULL_VERSION%.*}"
 
 PKG_VERSION=${PKG_VERSION:-$NVDS_FULL_VERSION}
-PKG_REVISION=1
+PKG_REVISION=${PKG_REVISION:-1}
 # Current build timestamp (UTC), e.g. "Mon Jun 29 08:00:00 UTC 2026".
 BUILD_DATE="$(date -u '+%a %b %e %H:%M:%S UTC %Y')"
+
+# Distribution the package is built for, e.g. "ubuntu24.04".  "auto" detects it
+# from /etc/os-release, "none" (or empty) leaves the package untagged.
+DISTRO_TAG=${DISTRO_TAG:-auto}
 
 FORMAT=both
 DEB_ARCH=""
 OUTPUT_DIR="$SCRIPT_DIR"
 STAGE_DIR="$SCRIPT_DIR/.pkg-stage"
 KEEP_STAGE=0
+PRINT_DEB_NAME=0
 
 usage() {
   cat <<'EOF'
@@ -86,13 +95,23 @@ Options:
   -h, --help          Show this help and exit
   --format=FMT        What to build: deb | tar | both  (default: both)
   --arch=ARCH         Target debian arch: amd64 | arm64 (default: host)
+  --distro=TAG        Distribution tag for the .deb filename, e.g. ubuntu24.04
+                      (default: auto-detected from /etc/os-release; "none" omits it)
   --output-dir=PATH   Where to write the .deb / .tbz2 (default: build/)
   --stage-dir=PATH    Scratch staging directory (default: build/.pkg-stage)
   --keep-stage        Do not delete the staging dir on exit
+  --print-deb-name    Print the .deb filename that would be built, then exit
+                      (does not need a built install tree)
 
 Environment overrides (CLI flags take precedence):
   NVDS_VERSION   MAJOR.MINOR.PATCH (default: 9.2.0)
   PKG_VERSION    Package version recorded in control   (default: NVDS_VERSION)
+  PKG_REVISION   Debian revision recorded in control   (default: 1)
+  DISTRO_TAG     Distribution tag for the .deb filename (default: auto)
+
+The distribution tag names the release the package was built for.  It is part
+of the .deb filename and its Description only, never of Version, so that
+`dpkg --compare-versions` never compares one distribution against another.
 EOF
 }
 
@@ -101,9 +120,11 @@ while [[ $# -gt 0 ]]; do
     -h|--help)        usage; exit 0 ;;
     --format=*)       FORMAT="${1#*=}" ;;
     --arch=*)         DEB_ARCH="${1#*=}" ;;
+    --distro=*)       DISTRO_TAG="${1#*=}" ;;
     --output-dir=*)   OUTPUT_DIR="${1#*=}" ;;
     --stage-dir=*)    STAGE_DIR="${1#*=}" ;;
     --keep-stage)     KEEP_STAGE=1 ;;
+    --print-deb-name) PRINT_DEB_NAME=1 ;;
     *) echo "error: unknown argument: $1 (try --help)" >&2; exit 1 ;;
   esac
   shift
@@ -132,6 +153,39 @@ fi
 IS_AARCH64=0
 [[ "$DEB_ARCH" = "arm64" ]] && IS_AARCH64=1
 
+# Resolve the distribution tag (e.g. ubuntu24.04) that names the release this
+# package was built for.  It goes into the .deb filename and Description and
+# nowhere else -- deliberately NOT into Version: dpkg compares version strings
+# alone, so a tag there would make `dpkg --compare-versions` rank one Ubuntu
+# release against another, and turn a bound like (>= 9.2.0-1) into a different
+# constraint on every release.  Underscore separates the filename fields, so
+# it is stripped along with anything else Debian filenames do not take.
+detect_distro_tag() {
+  [[ -r /etc/os-release ]] || return 0
+  # shellcheck disable=SC1091
+  ( . /etc/os-release >/dev/null 2>&1 || exit 0
+    [[ -n "${ID:-}" && -n "${VERSION_ID:-}" ]] && printf '%s%s' "$ID" "$VERSION_ID" )
+}
+case "$DISTRO_TAG" in
+  auto)
+    DISTRO_TAG=$(detect_distro_tag || true)
+    [[ -n "$DISTRO_TAG" ]] || echo "warning: cannot read a distribution from" \
+      "/etc/os-release; the .deb filename will not name one (pass --distro=TAG)" >&2
+    ;;
+  none|NONE) DISTRO_TAG="" ;;
+esac
+DISTRO_TAG=$(printf '%s' "$DISTRO_TAG" | tr -cd 'A-Za-z0-9.+-')
+
+# <package>_<version>[_<distro>]_<arch>.deb -- the tag sits before the
+# architecture, which is where every other Ubuntu-specific deb in this fleet
+# carries it (hstream_<version>_ubuntu24.04_amd64.deb), so a plain
+# *_<arch>.deb glob still finds the package.
+DEB_NAME="deepstream-${NVDS_VERSION}_${PKG_VERSION}-${PKG_REVISION}${DISTRO_TAG:+_$DISTRO_TAG}_${DEB_ARCH}.deb"
+if [[ "$PRINT_DEB_NAME" -eq 1 ]]; then
+  printf '%s\n' "$DEB_NAME"
+  exit 0
+fi
+
 DS_INSTALL_ROOT=/opt/nvidia/deepstream/deepstream-${NVDS_VERSION}
 DS_REL="opt/nvidia/deepstream/deepstream-${NVDS_VERSION}"
 DS_ROOT="$STAGE_DIR/$DS_REL"
@@ -151,7 +205,7 @@ for sub in bin lib samples service-maker LicenseAgreement.pdf; do
   require "$DS_INSTALL_ROOT/$sub" "$DS_INSTALL_ROOT/$sub"
 done
 
-log "Packaging DeepStream $NVDS_VERSION (pkg $PKG_VERSION-$PKG_REVISION, arch $DEB_ARCH, aarch64=$IS_AARCH64)"
+log "Packaging DeepStream $NVDS_VERSION (pkg $PKG_VERSION-$PKG_REVISION, arch $DEB_ARCH, distro ${DISTRO_TAG:-none}, aarch64=$IS_AARCH64)"
 log "Source install tree : $DS_INSTALL_ROOT"
 log "Staging directory   : $STAGE_DIR"
 log "Output directory    : $OUTPUT_DIR"
@@ -633,7 +687,6 @@ build_tar() {
 # ---------------------------------------------------------------------------
 # Emit Debian package
 # ---------------------------------------------------------------------------
-DEB_NAME="deepstream-${NVDS_VERSION}_${PKG_VERSION}-${PKG_REVISION}_${DEB_ARCH}.deb"
 build_deb() {
   command -v dpkg-deb >/dev/null 2>&1 || {
     echo "error: dpkg-deb not found; cannot build .deb (use --format=tar)" >&2; exit 1; }
@@ -654,12 +707,18 @@ build_deb() {
   # with `apt install ./pkg.deb`; a plain `dpkg -i` still needs them removed
   # first). Harmless no-op when the artifacts were installed via tar (no
   # registered dpkg owner).
+  # The mesa and pip entries carry no version bound on purpose.  They used to
+  # pin 24.04 package versions, which pins nothing useful -- every later
+  # release satisfies them -- and libglapi-mesa does not exist at all after
+  # 24.04, where it became mesa-libgallium.  A package that hard-depends on a
+  # name the target release dropped cannot be installed there, which is what
+  # the separate compatibility metapackage used to work around.
   local depends conflicts
   if [[ "$DEB_ARCH" = "arm64" ]]; then
-    depends="cuda-cudart-13-0 | cuda-cudart-13-2, cuda-cudart-dev-13-0 | cuda-cudart-dev-13-2, libnpp-13-0 | libnpp-13-2, libnpp-dev-13-0 | libnpp-dev-13-2, libcufft-13-0 | libcufft-13-2, libcairo2 (>= 1.16.0), libglib2.0-0 (>= 2.72.4), libgstreamer1.0-0 (>= 1.20.3), libgstreamer1.0-dev (>= 1.20.3), libgstreamer-plugins-base1.0-0 (>= 1.20.1), libgstreamer-plugins-base1.0-dev (>= 1.20.1), libnvinfer10 (>= 10.0.0), libnvinfer-dev (>= 10.0.0), libnvonnxparsers10 (>= 10.0.0), libnvonnxparsers-dev (>= 10.0.0), libnvinfer-plugin10 (>= 10.0.0), libnvinfer-plugin-dev (>= 10.0.0), libpangocairo-1.0-0 (>= 1.40.14), libx11-6, libnvvpi4, libyaml-cpp-dev (>=0.6.2), python3-pip (>=24.0+dfsg-1ubuntu1.1)"
+    depends="cuda-cudart-13-0 | cuda-cudart-13-2, cuda-cudart-dev-13-0 | cuda-cudart-dev-13-2, libnpp-13-0 | libnpp-13-2, libnpp-dev-13-0 | libnpp-dev-13-2, libcufft-13-0 | libcufft-13-2, libcairo2 (>= 1.16.0), libglib2.0-0 (>= 2.72.4), libgstreamer1.0-0 (>= 1.20.3), libgstreamer1.0-dev (>= 1.20.3), libgstreamer-plugins-base1.0-0 (>= 1.20.1), libgstreamer-plugins-base1.0-dev (>= 1.20.1), libnvinfer10 (>= 10.0.0), libnvinfer-dev (>= 10.0.0), libnvonnxparsers10 (>= 10.0.0), libnvonnxparsers-dev (>= 10.0.0), libnvinfer-plugin10 (>= 10.0.0), libnvinfer-plugin-dev (>= 10.0.0), libpangocairo-1.0-0 (>= 1.40.14), libx11-6, libnvvpi4, libyaml-cpp-dev (>=0.6.2), python3-pip"
     conflicts="deepstream-binaries-aarch64, deepstream-sample-data"
   else
-    depends="cuda-cudart-13-0 | cuda-cudart-13-2, cuda-cudart-dev-13-0 | cuda-cudart-dev-13-2, libnpp-13-0 | libnpp-13-2, libnpp-dev-13-0 | libnpp-dev-13-2, libcairo2 (>= 1.16.0), libglib2.0-0 (>= 2.72.4), libgstreamer1.0-0 (>= 1.20.3), libgstreamer1.0-dev (>= 1.20.3), libgstreamer-plugins-base1.0-0 (>= 1.20.1), libgstreamer-plugins-base1.0-dev (>= 1.20.1), libnvinfer10 (>= 10.0.0), libnvinfer-dev (>= 10.0.0), libnvonnxparsers10 (>= 10.0.0), libnvonnxparsers-dev (>= 10.0.0), libnvinfer-plugin10 (>= 10.0.0), libnvinfer-plugin-dev (>= 10.0.0), libpangocairo-1.0-0 (>= 1.40.14), libx11-6, libyaml-cpp-dev (>=0.6.2), libgbm1 (>= 23.0.4-0ubuntu1~24.04.1), libglapi-mesa (>= 23.0.4-0ubuntu1~24.04.1), libgles2-mesa-dev (>= 23.0.4-0ubuntu1~24.04.1), python3-pip (>=24.0+dfsg-1ubuntu1.1)"
+    depends="cuda-cudart-13-0 | cuda-cudart-13-2, cuda-cudart-dev-13-0 | cuda-cudart-dev-13-2, libnpp-13-0 | libnpp-13-2, libnpp-dev-13-0 | libnpp-dev-13-2, libcairo2 (>= 1.16.0), libglib2.0-0 (>= 2.72.4), libgstreamer1.0-0 (>= 1.20.3), libgstreamer1.0-dev (>= 1.20.3), libgstreamer-plugins-base1.0-0 (>= 1.20.1), libgstreamer-plugins-base1.0-dev (>= 1.20.1), libnvinfer10 (>= 10.0.0), libnvinfer-dev (>= 10.0.0), libnvonnxparsers10 (>= 10.0.0), libnvonnxparsers-dev (>= 10.0.0), libnvinfer-plugin10 (>= 10.0.0), libnvinfer-plugin-dev (>= 10.0.0), libpangocairo-1.0-0 (>= 1.40.14), libx11-6, libyaml-cpp-dev (>=0.6.2), libgbm1, mesa-libgallium | libglapi-mesa, libgles2-mesa-dev, python3-pip"
     conflicts="libglapi-amber, deepstream-binaries-x86, deepstream-sample-data"
   fi
 
@@ -669,8 +728,21 @@ build_deb() {
     echo "Maintainer: DeepStreamSDK-Support <DeepStreamSDK-Support@nvidia.com>"
     echo "Architecture: ${DEB_ARCH}"
     echo "Description: DeepStreamSDK runtime libraries, development files and samples"
+    # Continuation lines: the distribution this was built for, recorded here
+    # and in the filename, but kept out of Version so dpkg never compares one
+    # distribution against another.
+    if [[ -n "$DISTRO_TAG" ]]; then
+      echo " Built for ${DISTRO_TAG} (${DEB_ARCH}). The distribution tag appears in the"
+      echo " package filename, this description and X-Built-For-Distribution; it is not"
+      echo " part of the version, so dpkg version comparison is unaffected by it."
+    fi
     echo "Depends: ${depends}"
     [[ -n "$conflicts" ]] && echo "Conflicts: ${conflicts}"
+    # Machine-readable form of the same tag, for tooling that picks a package
+    # per target release.  dpkg carries user-defined fields through untouched
+    # and never compares them; `dpkg-deb -f <deb> X-Built-For-Distribution`
+    # reads it back without unpacking the archive.
+    [[ -n "$DISTRO_TAG" ]] && echo "X-Built-For-Distribution: ${DISTRO_TAG}"
     echo "Source: deepstream"
     echo "Section: Utils"
     echo "Priority: Standard"
