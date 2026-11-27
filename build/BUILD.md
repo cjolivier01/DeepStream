@@ -476,76 +476,90 @@ bash build/package.sh --help
 |---|---|
 | `--format=deb\|tar\|both` | What to build (default: `both`) |
 | `--arch=amd64\|arm64` | Target Debian architecture (default: auto-detected from host) |
+| `--distro=TAG` | Distribution the `.deb` is built for, e.g. `ubuntu24.04` (default: auto-detected from `/etc/os-release`; `none` omits it) |
 | `--output-dir=PATH` | Where to write the `.deb` / `.tar.gz` (default: `build/`) |
 | `--stage-dir=PATH` | Scratch staging directory (default: `build/.pkg-stage`) |
 | `--keep-stage` | Do not delete the staging directory on exit (useful for inspection) |
+| `--print-deb-name` | Print the `.deb` filename that would be built, then exit (no built install tree needed) |
 
-Environment overrides: `NVDS_VERSION` (default `9.2.0`, must be `MAJOR.MINOR.PATCH`) and `PKG_VERSION`
-(default: same as `NVDS_VERSION`).
+Environment overrides: `NVDS_VERSION` (default `9.2.0`, must be `MAJOR.MINOR.PATCH`), `PKG_VERSION`
+(default: same as `NVDS_VERSION`) and `DISTRO_TAG` (default: auto).
 
 ### Output
 
 Packages are written to the output directory (default `build/`) and named:
 
 ```text
-deepstream-<NVDS_VERSION>_<PKG_VERSION>-<revision>_<arch>.deb
+deepstream-<NVDS_VERSION>_<PKG_VERSION>-<revision>_<distro>_<arch>.deb
 deepstream-<NVDS_VERSION>_<PKG_VERSION>-<revision>_<arch>.tar.gz
 ```
+
+for example `deepstream-9.2_9.2.0-1_ubuntu24.04_amd64.deb`.
+
+### The distribution tag
+
+The `.deb` names the release it was built for, because a DeepStream build links
+against the GStreamer, mesa and CUDA libraries of the distribution that built
+it. The tag is auto-detected from `/etc/os-release` (`ID` + `VERSION_ID`) and
+lands in three places:
+
+| Where | Form | Why |
+|---|---|---|
+| Filename | `..._ubuntu24.04_amd64.deb` | Before the architecture, matching every other Ubuntu-specific deb in this fleet (`hstream_<version>_ubuntu24.04_amd64.deb`), so a plain `*_amd64.deb` glob still finds it |
+| `X-Built-For-Distribution` | `ubuntu24.04` | Machine-readable, survives a rename: `dpkg-deb -f <deb> X-Built-For-Distribution` reads it without unpacking. dpkg carries user-defined fields through untouched and never compares them |
+| `Description` | prose | What `apt show` and `dpkg -s` surface to a human |
+
+It is deliberately **not** part of `Version:`. `dpkg --compare-versions`, and
+every version bound in a dependency, compare the version string alone — a tag
+in there would rank Ubuntu releases against each other and quietly change what
+`(>= 9.2.0-1)` means on each one. Builds of the same DeepStream version for
+different releases therefore compare equal:
+
+```bash
+dpkg --compare-versions 9.2.0-1 eq 9.2.0-1 && echo same   # 24.04 vs 26.04 build
+```
+
+The practical consequence: nothing distinguishes the two builds to the
+dependency solver, so an apt *repository* will never offer one as an upgrade
+over the other — tell them apart by filename or by `X-Built-For-Distribution`. Installing the file directly
+(`sudo apt install ./<pkg>.deb`, verified with apt 3.2) does install it over an
+equal installed version; if an older apt reports "already the newest version"
+instead, use `sudo apt install --reinstall ./<pkg>.deb` or
+`sudo dpkg -i ./<pkg>.deb`.
 
 The generated `.deb` can then be installed on a target machine with:
 
 ```bash
-sudo apt install ./deepstream-<NVDS_VERSION>_<PKG_VERSION>-1_<arch>.deb
+sudo apt install ./deepstream-<NVDS_VERSION>_<PKG_VERSION>-1_<distro>_<arch>.deb
 ```
 
 ---
 
-## Ubuntu 26.04 compatibility package (`make publish`)
+## Packaging the installed tree (`make deb`, `make publish`)
 
-NVIDIA's all-in-one `deepstream-9.2` deb declares a versioned `libglapi-mesa`
-dependency that Ubuntu 26.04 (resolute) cannot satisfy, so it will not install
-there. On hosts where DeepStream was instead built and installed from this
-repository,
-[`scripts/build_deepstream_ubuntu26_compat_deb.sh`](../scripts/build_deepstream_ubuntu26_compat_deb.sh)
-builds a small **registration-only** deb that records `deepstream-9.2` in dpkg
-with dependencies that do resolve on 26.04, so packages depending on
-`deepstream-9.2` are satisfied.
+`build/build.sh` installs DeepStream to
+`/opt/nvidia/deepstream/deepstream-<NVDS_VERSION>/`. The Makefile packages that
+tree into a real `.deb` by calling [`build/package.sh`](package.sh); it does not
+build DeepStream, and aborts with a clear message if the tree is not there.
 
-> **Metadata only.** The package holds a `control` file, maintainer scripts and
-> `/usr/share/doc` — roughly 2 KB, no DeepStream payload and no repo sources.
-> The runtime tree must already exist at
-> `/opt/nvidia/deepstream/<NVDS_VERSION>/` (the script aborts if it does not).
-> Its `postinst` writes `/etc/ld.so.conf.d/deepstream.conf` and runs `ldconfig`;
-> its `prerm` deliberately removes nothing, because the install tree belongs to
-> `scripts/install.sh` / `scripts/uninstall.sh`.
-
-### Versioning
-
-The version carries a per-user, monotonically increasing build tag:
-
-```text
-deepstream-9.2_<point-version>-<revision>-<user>-<build-number>_<arch>.deb
-deepstream-9.2_9.2.0-1+resolute1-jdoe-7_amd64.deb
-```
-
-dpkg splits a version at its last `-`, so the build number lands in the Debian
-revision field: `…-jdoe-7` sorts below `…-jdoe-10`, and any tagged build sorts
-above the untagged `9.2.0-1+resolute1`. The number itself lives in
-[`build/deb-build-number`](deb-build-number), which is tracked in git.
-
-### Build and publish
-
-The root [`Makefile`](../Makefile) drives it; `make` on its own lists every
-target:
+This used to produce a 2 KB registration-only metapackage instead, because the
+dependency list stamped into the real package pinned
+`libglapi-mesa (>= 23.0.4-0ubuntu1~24.04.1)`, and `libglapi-mesa` does not exist
+on Ubuntu 26.04 (resolute) at all — it became `mesa-libgallium`. A package that
+hard-depends on a name the target release dropped cannot be installed there.
+`package.sh` now declares `mesa-libgallium | libglapi-mesa` and drops the
+`~24.04.1` bounds from `libgbm1`, `libgles2-mesa-dev` and `python3-pip`, which
+pinned nothing useful: every later release satisfies them. The real package
+installs on 24.04 and 26.04, so there is nothing left for a metapackage to do.
 
 | Command | Effect |
 |---|---|
-| `make deb` | Build the deb into the repo root at the current build number; no git side effects |
+| `make deb` | Package the installed tree into the repo root, untagged; no git side effects |
 | `make install` | Build it, then `apt install` it (prompts for sudo) |
-| `make publish` | Increment the build number, build the deb, then commit and push `build/deb-build-number` |
-| `make publish-dry-run` | Show the next version, output path and push target without building, committing or pushing |
-| `make clean` | Remove your own compatibility debs from the output directory |
-| `make distclean` / `make expunge` | Remove every locally built compatibility deb there |
+| `make publish` | Increment the build number, package the tree tagged `+<user>-<n>`, then commit and push `build/deb-build-number` |
+| `make publish-dry-run` | Show the next version and output path without building, committing or pushing |
+| `make clean` | Remove your own tagged debs from the output directory |
+| `make distclean` / `make expunge` | Remove every locally tagged deb there |
 
 `make publish` records, commits and pushes the new number **only after the deb
 builds successfully** — a failed build leaves the tracked number untouched. The
@@ -554,8 +568,14 @@ staged changes are left alone, and it pushes to the current branch's configured
 remote (`origin` when the branch has none). If the push is rejected, rebase and
 push by hand rather than re-running `publish`, which would burn another number.
 
-`clean` and `distclean` only match names carrying a `-<user>-<build-number>`
-tag, so neither can delete NVIDIA's own `deepstream-9.2_9.2.0-1_amd64.deb`.
+A published build is versioned `<version>-1+<user>-<n>`, which sorts above an
+untagged `<version>-1`, so it wins over both NVIDIA's package and an untagged
+`make deb` output. `clean` and `distclean` only match names carrying that tag,
+so neither can delete an untagged package. The filename also carries the
+distribution it was built for (`..._ubuntu24.04_amd64.deb`); that part is not
+in the version and plays no role in version comparison — see
+[The distribution tag](#the-distribution-tag). `make publish-dry-run` prints
+the exact filename it would produce.
 
 Variables:
 
@@ -564,21 +584,20 @@ Variables:
 | `DEB_USER` | `id -un` | User component of the version tag |
 | `DEB_OUTPUT_DIR` | repo root | Where the deb is written |
 | `NVDS_VERSION` | `9.2.0` | Selects the package name (`deepstream-9.2`) |
-| `PACKAGE_VERSION` | — | Full Debian version override; skips the build tag |
-| `INSTALL_ROOT` | `/opt/nvidia/deepstream/deepstream-9.2` | Install root to register |
-| `FORCE` | — | `FORCE=1` builds on a host that is not 26.04/resolute |
+| `PACKAGE_VERSION` | — | Upstream version override |
+| `DISTRO_TAG` | auto-detected | Distribution named in the deb filename, e.g. `ubuntu24.04`; never part of the version |
+
+`package.sh` reads `PKG_VERSION` and `PKG_REVISION` from the environment, which
+is how the Makefile stamps the tag; it can also be run directly:
 
 ```bash
 make publish DEB_USER=ci
-make deb FORCE=1 DEB_OUTPUT_DIR=/tmp/debs
-
-# The script takes the same settings as flags, in either --opt value or
-# --opt=value form:
-bash scripts/build_deepstream_ubuntu26_compat_deb.sh --help
+make deb DEB_OUTPUT_DIR=/tmp/debs
+bash build/package.sh --help
 ```
 
 Generated debs are gitignored at the repo root. Install one by hand with:
 
 ```bash
-sudo apt install ./deepstream-9.2_9.2.0-1+resolute1-jdoe-7_amd64.deb
+sudo apt install ./deepstream-9.2_9.2.0-1+jdoe-7_ubuntu24.04_amd64.deb
 ```

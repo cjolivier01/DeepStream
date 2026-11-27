@@ -93,7 +93,7 @@ After the first install, clear the GStreamer plugin cache: `rm -rf ~/.cache/gstr
 | Install artifacts only | Not a separate step: the `artifacts` stage runs as part of a full `bash build/build.sh`. For a bare-metal install use the all-in-one package (see **GitHub Release Assets**). |
 | Clear GStreamer plugin cache | `rm -rf ~/.cache/gstreamer-1.0/` |
 | List packaging targets | `make` (root `Makefile`; the source build is `build/build.sh`, not `make`) |
-| Build Ubuntu 26.04 compat deb (metadata only) | `make deb` |
+| Package the installed tree into a .deb | `make deb` |
 | Publish it (bump build number, commit, push) | `make publish` — see `build/BUILD.md` |
 | Run DeepStream reference app | `deepstream-app -c <config-file>` |
 | Print environment (for diagnostics) | `bash scripts/print_env.sh` |
